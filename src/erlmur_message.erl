@@ -136,16 +136,14 @@ handle_pb(?MSG_PERMISSIONQUERY,Msg,{Pid,_Key,_From}) ->
 handle_pb(?MSG_PING,Msg,{Pid,Key,_From}) ->
     PingMsg = mumble_pb:decode_ping(Msg),
     {Good,Late,Lost,Resync} = ocb128crypt:local(Key),
-    NewKey = ocb128crypt:remote(PingMsg#ping.good,
-				PingMsg#ping.late,
-				PingMsg#ping.lost,
-				PingMsg#ping.resync,
-				Key),
     Pong = PingMsg#ping{good=Good,
 			late=Late,
 			lost=Lost,
 			resync=Resync},
-    erlmur_client:newkey(Pid,NewKey),
+    erlmur_client:update_key_remote(Pid,{PingMsg#ping.good,
+					 PingMsg#ping.late,
+					 PingMsg#ping.lost,
+					 PingMsg#ping.resync}),
     erlmur_client:send(Pid,encode_message(?MSG_PING,mumble_pb:encode(Pong)));
 
 handle_pb(?MSG_CRYPTSETUP,Msg,{Pid,Key,_From}) ->

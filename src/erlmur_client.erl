@@ -14,7 +14,7 @@
 -export([start_link/0,
 	 send/2,
 	 send_udp/2, 
-	 newkey/2, 
+	 update_key_remote/2, 
 	 newuser/2, 
 	 deluser/2,
 	 cryptkey/1,
@@ -50,8 +50,8 @@ deluser(Pid,UserState) ->
 cryptkey(Pid) ->
     gen_server:call(Pid,cryptkey).
 
-newkey(Pid,Key) ->
-    gen_server:cast(Pid,{newkey,Key}).
+update_key_remote(Pid,Remote) ->
+    gen_server:cast(Pid,{update_key_remote,Remote}).
 
 handle_msg(Pid,PortNo,Msg) ->
     gen_server:cast(Pid,{handle_msg,PortNo,Msg}).
@@ -181,8 +181,10 @@ handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket}
 	     end,
     {noreply,State#state{cryptkey=NewKey, udp_port=PortNo, use_udp_tunnle=false}};
 
-handle_cast({newkey,Key}, State) ->
-    {noreply,State#state{cryptkey=Key}};
+handle_cast({update_key_remote,{Good,Late,Lost,Resync}}, State = #state{cryptkey=Key}) ->
+    NewKey = ocb128crypt:remote(Good,Late,Lost,Resync,Key),
+    error_logger:info_report([{key,Key},{newkey,NewKey}]),
+    {noreply,State#state{cryptkey=NewKey}};
 
 handle_cast({sid,Sid}, State) ->
     error_logger:info_msg("New user ~w~n",[Sid]),

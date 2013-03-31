@@ -108,16 +108,16 @@ unpack(cryptState_t *cs, const ERL_NIF_TERM** tuple, ErlNifEnv* env, const ERL_N
   if(!enif_get_tuple(env, tuple[5], &ar, &remote_tuple) || ar != 4)
     return FALSE;
 
-  if(!enif_get_uint(env, local_tuple[0], &(cs->uiRemoteGood)))
+  if(!enif_get_uint(env, remote_tuple[0], &(cs->uiRemoteGood)))
     return FALSE;
   
-  if(!enif_get_uint(env, local_tuple[1], &(cs->uiRemoteLate)))
+  if(!enif_get_uint(env, remote_tuple[1], &(cs->uiRemoteLate)))
      return FALSE;
 
-  if(!enif_get_uint(env, local_tuple[2], &(cs->uiRemoteLost)))
+  if(!enif_get_uint(env, remote_tuple[2], &(cs->uiRemoteLost)))
      return FALSE;
 
-  if(!enif_get_uint(env, local_tuple[3], &(cs->uiRemoteResync)))
+  if(!enif_get_uint(env, remote_tuple[3], &(cs->uiRemoteResync)))
      return FALSE;
 
   return TRUE;
