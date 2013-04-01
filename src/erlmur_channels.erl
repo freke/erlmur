@@ -47,6 +47,10 @@ list(#state{channels=Channels}) ->
 update(ChannelState = #channelstate{channel_id=undefined},
        Users,
        #state{last_id=LastId,channels=Channels} = State) ->
+    error_logger:info_report([{erlmur_channels,update},
+			      "New channel",
+			      {channel, LastId+1},
+			      {name,ChannelState#channelstate.name}]),
     CS = ChannelState#channelstate{channel_id=LastId+1},
     NC = dict:store(LastId+1,CS,Channels),
     [erlmur_client:channelstate(P,CS) || P <- erlmur_users:list(Users)],
@@ -55,6 +59,14 @@ update(ChannelState = #channelstate{channel_id=undefined},
 remove(Channel = #channelremove{channel_id=Id},
       Users,
       #state{channels=Channels} = State) ->
+
+    SubChannels = dict:filter(fun(_,#channelstate{parent=SubId}) -> SubId =:= Id end, Channels),
+    NewState = lists:foldl(fun(SubId,Acc) -> remove(#channelremove{channel_id=SubId},Users,Acc) end, 
+			   State, 
+			   dict:fetch_keys(SubChannels)),
+		
+    error_logger:info_report([{erlmur_cahnnels,remove},
+			      {channel, Id}]),
     NC = dict:erase(Id,Channels),
     [erlmur_client:channelremove(P,Channel) || P <- erlmur_users:list(Users)],
-    State#state{channels=NC}.
+    NewState#state{channels=NC}.
