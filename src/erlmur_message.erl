@@ -55,6 +55,14 @@ handle({userstate,UR},{Pid,_Key,_From}) ->
     R=mumble_pb:encode_userstate(UR),
     erlmur_client:send(Pid,encode_message(?MSG_USERSTATE,R));
 
+handle({channelstate,CS},{Pid,_Key,_From}) ->
+    R=mumble_pb:encode_channelstate(CS),
+    erlmur_client:send(Pid,encode_message(?MSG_CHANNELSTATE,R));
+
+handle({channelremove,C},{Pid,_Key,_From}) ->
+    R=mumble_pb:encode_channelremove(C),
+    erlmur_client:send(Pid,encode_message(?MSG_CHANNELREMOVE,R));
+
 handle({deluser,UR},{Pid,_Key,_From}) ->
     R=mumble_pb:encode_userremove(UR),
     erlmur_client:send(Pid,encode_message(?MSG_USERREMOVE,R));
@@ -102,14 +110,14 @@ handle_pb(?MSG_AUTHENTICATE,Msg,{Pid,Key,{Address,_Port}}) ->
     Sid=erlmur_server:authenticate(U,P,Address),
     CS=erlmur_server:channelstates(),
     lists:foreach(fun(K) ->
-			  R=mumble_pb:encode_channelstate(dict:fetch(K,CS)),
+			  R=mumble_pb:encode_channelstate(erlmur_channels:channel(K,CS)),
 			  erlmur_client:send(Pid,encode_message(?MSG_CHANNELSTATE,R))
-		  end, dict:fetch_keys(CS)),
+		  end, erlmur_channels:list(CS)),
     US=erlmur_server:userstates(),
     lists:foreach(fun(K) ->
-			  R=mumble_pb:encode_userstate(dict:fetch(K,US)),
+			  R=mumble_pb:encode_userstate(erlmur_users:user(K,US)),
 			  erlmur_client:send(Pid,encode_message(?MSG_USERSTATE,R))
-		  end, dict:fetch_keys(US)),
+		  end, erlmur_users:list(US)),
     
     {K,DIV,EIV} = ocb128crypt:key(Key),
     CryptSetup = mumble_pb:encode_cryptsetup(#cryptsetup{key=K,
@@ -159,9 +167,15 @@ handle_pb(?MSG_CRYPTSETUP,Msg,{Pid,Key,_From}) ->
 	    erlmur_client:newkey(Pid,NewKey)
     end;
 
-handle_pb(?MSG_UDPTUNNEL,Msg,{Pid,_Key,_From}=Client) ->
+handle_pb(?MSG_UDPTUNNEL, Msg, {Pid,_Key,_From}=Client) ->
     erlmur_client:udp_tunnel(Pid),
     handle_udp(Msg,Client);
+
+handle_pb(?MSG_CHANNELSTATE, Msg, _Client) ->
+    erlmur_server:channelstate(mumble_pb:decode_channelstate(Msg));
+
+handle_pb(?MSG_CHANNELREMOVE, Msg, _Client) ->
+    erlmur_server:channel_remove(mumble_pb:decode_channelremove(Msg));
 
 handle_pb(Type,Msg,Client) ->
     error_logger:error_report([{erlmur_message,"Unhandled message"},

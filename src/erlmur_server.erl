@@ -15,6 +15,8 @@
 	 version/0,
 	 authenticate/3,
 	 channelstates/0,
+	 channelstate/1,
+	 channel_remove/1,
 	 userstates/0,
 	 codecversion/0,
 	 codecversion/1,
@@ -79,6 +81,12 @@ authenticate(User,Password,Address) ->
 channelstates() ->
     gen_server:call(?SERVER,channelstates).
 
+channelstate(ChannelState) ->
+    gen_server:cast(?SERVER,{channelstate,ChannelState}).
+
+channel_remove(Channel) ->
+    gen_server:cast(?SERVER,{channel_remove,Channel}).
+
 userstates() ->
     gen_server:call(?SERVER,userstates).
 
@@ -125,8 +133,9 @@ voice_data(Type,Target,ClientPid,Counter,Voice,Positional) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    C=dict:store(0, #channelstate{ channel_id=0,parent=0, name= <<"Root">>}, dict:new()),
-    {ok, #state{users=dict:new(), channels=C, lastsid=0, clients=dict:new()}}.
+    C=erlmur_channels:init(),
+    U=erlmur_users:init(),
+    {ok, #state{users=U, channels=C, lastsid=0, clients=dict:new()}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -156,13 +165,15 @@ handle_call(version, _From, State) ->
 		     os = list_to_binary(OsNameString),
 		     os_version = list_to_binary(OsVersion)}, State};
 
-handle_call({authenticate,User,Pass,Address}, {Pid,_}, State) ->
+handle_call({authenticate,User,Pass,Address}, {Pid,_}, #state{lastsid=Session,clients=C} = State) ->
     error_logger:info_report([{erlmur_server,handle_call},
 			      {authenticate,User},
 			      {pass,Pass},
 			      {address,Address}]),
-    {Sid,NewState} = add_user(Pid,User,Address,State),
-    {reply, Sid, NewState};
+    NC=dict:store(Address,Pid,C),
+    NewUsers = erlmur_users:add(Pid,User,Session+1,State#state.users),
+    erlang:monitor(process, Pid),
+    {reply, Session+1, State#state{users=NewUsers,lastsid=Session+1, clients=NC}};
 
 handle_call(channelstates, 
 	    _From, 
@@ -202,11 +213,12 @@ handle_call({permissionquery,Perm}, _From, S) ->
     {reply, Perm#permissionquery{permissions=?PERM_ALL}, S};
 
 handle_call(deluser,{Pid,_}, State) ->
-    NU = remove_user(Pid,<<"Disconnected">>,State),
+    NU = erlmur_users:remove(Pid,<<"Disconnected">>,State#state.users),
     {reply, ok, State#state{users=NU}};
 
 handle_call(usercount, _From, State) ->
-    {reply, {dict:size(State#state.users),10}, State};
+    NumUsers = erlmur_users:count(State#state.users),
+    {reply, {NumUsers,10}, State};
 
 handle_call({client_session,Address}, _From, #state{clients=C}=State) ->
     Pid = dict:find(Address,C),
@@ -241,6 +253,14 @@ handle_cast({voice_data,Type,Target,Pid,_Counter,_Voice,_Positional},State) ->
     error_logger:info_report([{erlmur_server,voice_data},{type,Type},{target,Target},{session_id,Sid}]),
     {noreply, State};
 
+handle_cast({channelstate,ChannelState},State = #state{channels=C,users=U}) ->
+    NewState = State#state{channels=erlmur_channels:update(ChannelState,U,C)},
+    {noreply, NewState};
+
+handle_cast({channel_remove,Channel},State = #state{channels=C,users=U}) ->
+    NewState = State#state{channels=erlmur_channels:remove(Channel,U,C)},
+    {noreply, NewState};
+
 handle_cast(Msg, State) ->
     error_logger:info_report([{erlmur_server,handle_cast},{"Unhandle msg",Msg}]),
     {noreply, State}.
@@ -256,11 +276,11 @@ handle_cast(Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info({'DOWN',_Ref,process,Pid,Reason}, State) when is_atom(Reason)->
-    NU = remove_user(Pid,atom_to_binary(Reason,latin1),State),
+    NU = erlmur_users:remove(Pid,atom_to_binary(Reason,latin1),State#state.users),
     {noreply, State#state{users=NU}};
 
 handle_info({'DOWN',_Ref,process,Pid,Reason}, State) ->
-    NU = remove_user(Pid,list_to_binary(Reason),State),
+    NU = erlmur_users:remove(Pid,list_to_binary(Reason),State#state.users),
     {noreply, State#state{users=NU}};
 
 handle_info(Info, State) ->
@@ -295,27 +315,4 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-remove_user(Pid,Reason,#state{users=U}) ->
-    case dict:find(Pid,U) of
-	{ok,US} ->
-	    error_logger:info_report([{erlmur_server,remove_user},
-				      {session_id,US#userstate.session},
-				      {reason,Reason}]),
-	    UR=#userremove{ session=US#userstate.session, reason=Reason},
-	    NU=dict:erase(Pid,U),
-	    [erlmur_client:deluser(P,UR) || P <- dict:fetch_keys(NU)],
-	    NU;
-	_ ->
-	    U
-    end.
 
-add_user(Pid,User,Address,#state{users=U,lastsid=L,clients=C}=State) ->
-    erlang:monitor(process, Pid),
-    UR=#userstate{name=User,user_id=L+1, session=L+1},
-    NU=dict:store(Pid, UR, U),
-    NC=dict:store(Address,Pid,C),
-    S=State#state{lastsid=L+1, users=NU,clients=NC},
-    error_logger:info_report([{erlmur_server,add_user},
-			      {session_id,UR#userstate.session}]),
-    [erlmur_client:newuser(P,UR) || P <- dict:fetch_keys(NU)],
-    {UR#userstate.session,S}.

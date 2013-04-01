@@ -21,7 +21,9 @@
 	 handle_msg/3,
 	 session_id/1, 
 	 session_id/2,
-	 udp_tunnel/1]).
+	 udp_tunnel/1,
+	 channelstate/2,
+	 channelremove/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -64,6 +66,12 @@ session_id(Pid,Sid) ->
 
 udp_tunnel(Pid) ->
     gen_server:cast(Pid,udp_tunnel).
+
+channelstate(Pid,ChannelState) ->
+    gen_server:cast(Pid,{channelstate,ChannelState}).
+
+channelremove(Pid,Channel) ->
+    gen_server:cast(Pid,{channel_remove,Channel}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -183,7 +191,6 @@ handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket}
 
 handle_cast({update_key_remote,{Good,Late,Lost,Resync}}, State = #state{cryptkey=Key}) ->
     NewKey = ocb128crypt:remote(Good,Late,Lost,Resync,Key),
-    error_logger:info_report([{key,Key},{newkey,NewKey}]),
     {noreply,State#state{cryptkey=NewKey}};
 
 handle_cast({sid,Sid}, State) ->
@@ -192,6 +199,16 @@ handle_cast({sid,Sid}, State) ->
 
 handle_cast(udp_tunnel, State) ->
     {noreply,State#state{use_udp_tunnle=true}};
+
+handle_cast({channelstate,ChannelState}, #state{cryptkey=Key,socket=Socket} = State) ->
+    {ok, {Address, Port}} = ssl:peername(Socket),
+    erlmur_message:handle({channelstate,ChannelState}, {self(), Key, {Address, Port}}),
+    {noreply,State};
+
+handle_cast({channel_remove,Channel}, #state{cryptkey=Key,socket=Socket} = State) ->
+    {ok, {Address, Port}} = ssl:peername(Socket),
+    erlmur_message:handle({channelremove,Channel}, {self(), Key, {Address, Port}}),
+    {noreply,State};
 
 handle_cast(Msg, State) ->
     error_logger:info_report([{?MODULE,"Unhandled message"},{msg,Msg}]),
