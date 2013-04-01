@@ -16,13 +16,11 @@ create a self signed certificate
 	$ openssl req -new -key key.pem -out request.pem
 	$ openssl x509 -req -days 30 -in request.pem -signkey key.pem -out server.pem
 
-
-to run the erlmur server the created "key.pem" and "server.pem" and place them in the project root dir
-
-
 ## start erlmur
 
-from project root dir
+to run the erlmur server you first have to move "key.pem" and "server.pem" to the project root dir
 
-	$ erl -pa ebin -pa deps/protobuffs/ebin
+then from project root dir
+
+	$ erl -pa ebin -pa deps/protobuffs/ebin -pa deps/record_info/ebin
 	1> erlmur:start().

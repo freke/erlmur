@@ -10,7 +10,7 @@
 
 -include("mumble_pb.hrl").
 
--export([init/0,channel/2,list/1,update/3,remove/3]).
+-export([init/0,channel/2,list/1,update/2,remove/2]).
 
 -record(state,{last_id,channels}).
 
@@ -45,7 +45,6 @@ list(#state{channels=Channels}) ->
 %% @end
 %%--------------------------------------------------------------------
 update(ChannelState = #channelstate{channel_id=undefined},
-       Users,
        #state{last_id=LastId,channels=Channels} = State) ->
     error_logger:info_report([{erlmur_channels,update},
 			      "New channel",
@@ -53,20 +52,25 @@ update(ChannelState = #channelstate{channel_id=undefined},
 			      {name,ChannelState#channelstate.name}]),
     CS = ChannelState#channelstate{channel_id=LastId+1},
     NC = dict:store(LastId+1,CS,Channels),
-    [erlmur_client:channelstate(P,CS) || P <- erlmur_users:list(Users)],
+    [erlmur_client:channelstate(P,CS) || P <- erlmur_users:list_clients()],
     State#state{last_id=LastId+1,channels=NC}.
 
+%%--------------------------------------------------------------------
+%% @doc
+%% @spec
+%% @end
+%%--------------------------------------------------------------------
 remove(Channel = #channelremove{channel_id=Id},
-      Users,
-      #state{channels=Channels} = State) ->
+       #state{channels=Channels} = State) ->
 
     SubChannels = dict:filter(fun(_,#channelstate{parent=SubId}) -> SubId =:= Id end, Channels),
-    NewState = lists:foldl(fun(SubId,Acc) -> remove(#channelremove{channel_id=SubId},Users,Acc) end, 
+    NewState = lists:foldl(fun(SubId,Acc) -> remove(#channelremove{channel_id=SubId},Acc) end, 
 			   State, 
 			   dict:fetch_keys(SubChannels)),
 		
     error_logger:info_report([{erlmur_cahnnels,remove},
 			      {channel, Id}]),
+    lists:foreach(fun(U) -> erlmur_users:move_to_channel(U,0) end, erlmur_users:in_channel(Id)),
     NC = dict:erase(Id,Channels),
-    [erlmur_client:channelremove(P,Channel) || P <- erlmur_users:list(Users)],
+    [erlmur_client:channelremove(P,Channel) || P <- erlmur_users:list_clients()],
     NewState#state{channels=NC}.

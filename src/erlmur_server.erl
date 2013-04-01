@@ -18,6 +18,7 @@
 	 channelstate/1,
 	 channel_remove/1,
 	 userstates/0,
+	 userstate/1,
 	 codecversion/0,
 	 codecversion/1,
 	 serverconfig/0,
@@ -56,7 +57,7 @@
 
 -include("mumble_pb.hrl").
 
--record(state, {users,channels,cryptkeys,lastsid,clients}).
+-record(state, {channels,cryptkeys,lastsid,clients}).
 
 %%%===================================================================
 %%% API
@@ -89,6 +90,9 @@ channel_remove(Channel) ->
 
 userstates() ->
     gen_server:call(?SERVER,userstates).
+
+userstate(UserState) ->
+    gen_server:cast(?SERVER,{userstate,UserState}).
 
 codecversion() ->
     gen_server:call(?SERVER,codecversion).
@@ -134,8 +138,8 @@ voice_data(Type,Target,ClientPid,Counter,Voice,Positional) ->
 %%--------------------------------------------------------------------
 init([]) ->
     C=erlmur_channels:init(),
-    U=erlmur_users:init(),
-    {ok, #state{users=U, channels=C, lastsid=0, clients=dict:new()}}.
+    erlmur_users:init(),
+    {ok, #state{channels=C, lastsid=0, clients=dict:new()}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -171,9 +175,9 @@ handle_call({authenticate,User,Pass,Address}, {Pid,_}, #state{lastsid=Session,cl
 			      {pass,Pass},
 			      {address,Address}]),
     NC=dict:store(Address,Pid,C),
-    NewUsers = erlmur_users:add(Pid,User,Session+1,State#state.users),
+    erlmur_users:add(Pid,User,Session+1),
     erlang:monitor(process, Pid),
-    {reply, Session+1, State#state{users=NewUsers,lastsid=Session+1, clients=NC}};
+    {reply, Session+1, State#state{lastsid=Session+1, clients=NC}};
 
 handle_call(channelstates, 
 	    _From, 
@@ -182,8 +186,8 @@ handle_call(channelstates,
 
 handle_call(userstates, 
 	    _From, 
-	    #state{users=U}=State) ->
-    {reply, U, State};
+	    State) ->
+    {reply, erlmur_user:all_user_states(), State};
 
 handle_call(codecversion, 
 	    _From, 
@@ -213,11 +217,11 @@ handle_call({permissionquery,Perm}, _From, S) ->
     {reply, Perm#permissionquery{permissions=?PERM_ALL}, S};
 
 handle_call(deluser,{Pid,_}, State) ->
-    NU = erlmur_users:remove(Pid,<<"Disconnected">>,State#state.users),
-    {reply, ok, State#state{users=NU}};
+    erlmur_users:remove(erlmur_users:find_from_client_pid(Pid),<<"Disconnected">>),
+    {reply, ok, State};
 
 handle_call(usercount, _From, State) ->
-    NumUsers = erlmur_users:count(State#state.users),
+    NumUsers = erlmur_users:count(),
     {reply, {NumUsers,10}, State};
 
 handle_call({client_session,Address}, _From, #state{clients=C}=State) ->
@@ -253,13 +257,17 @@ handle_cast({voice_data,Type,Target,Pid,_Counter,_Voice,_Positional},State) ->
     error_logger:info_report([{erlmur_server,voice_data},{type,Type},{target,Target},{session_id,Sid}]),
     {noreply, State};
 
-handle_cast({channelstate,ChannelState},State = #state{channels=C,users=U}) ->
-    NewState = State#state{channels=erlmur_channels:update(ChannelState,U,C)},
+handle_cast({channelstate,ChannelState},State = #state{channels=C}) ->
+    NewState = State#state{channels=erlmur_channels:update(ChannelState,C)},
     {noreply, NewState};
 
-handle_cast({channel_remove,Channel},State = #state{channels=C,users=U}) ->
-    NewState = State#state{channels=erlmur_channels:remove(Channel,U,C)},
+handle_cast({channel_remove,Channel},State = #state{channels=C}) ->
+    NewState = State#state{channels=erlmur_channels:remove(Channel,C)},
     {noreply, NewState};
+
+handle_cast({userstate,UserState}, State) ->
+    erlmur_users:update(erlmur_message:proplist(UserState)),
+    {noreply, State};
 
 handle_cast(Msg, State) ->
     error_logger:info_report([{erlmur_server,handle_cast},{"Unhandle msg",Msg}]),
@@ -276,12 +284,12 @@ handle_cast(Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info({'DOWN',_Ref,process,Pid,Reason}, State) when is_atom(Reason)->
-    NU = erlmur_users:remove(Pid,atom_to_binary(Reason,latin1),State#state.users),
-    {noreply, State#state{users=NU}};
+    erlmur_users:remove(erlmur_users:find_from_client_pid(Pid),atom_to_binary(Reason,latin1)),
+    {noreply, State};
 
 handle_info({'DOWN',_Ref,process,Pid,Reason}, State) ->
-    NU = erlmur_users:remove(Pid,list_to_binary(Reason),State#state.users),
-    {noreply, State#state{users=NU}};
+    erlmur_users:remove(erlmur_users:find_from_client_pid(Pid),list_to_binary(Reason)),
+    {noreply, State};
 
 handle_info(Info, State) ->
     error_logger:info_report([{erlmur_server,handle_info},{"Unhandle info",Info}]),

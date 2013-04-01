@@ -9,7 +9,12 @@
 
 -export([handle/2,handle_udp/2]).
 
+-export([userremove/1,userstate/1,proplist/1]).
+
 -include("mumble_pb.hrl").
+-include_lib("record_info/include/record_info.hrl").
+
+-export_record_info([userstate,userremove]).
 
 -define(MSG_VERSION, 16#00).
 -define(MSG_UDPTUNNEL, 16#01).
@@ -51,8 +56,8 @@ handle(<<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer, Msg:Len/bina
 handle(<<>>,_Client) -> 
     ok;
 
-handle({userstate,UR},{Pid,_Key,_From}) ->
-    R=mumble_pb:encode_userstate(UR),
+handle({userstate,US},{Pid,_Key,_From}) ->
+    R=mumble_pb:encode_userstate(US),
     erlmur_client:send(Pid,encode_message(?MSG_USERSTATE,R));
 
 handle({channelstate,CS},{Pid,_Key,_From}) ->
@@ -90,6 +95,22 @@ handle_udp(<<Type:3,Target:5,Rest/binary>>, {Pid,_Key,_From}) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
+proplist(Record) ->
+    record_info:record_to_proplist(Record, ?MODULE).
+
+userstate(PropList) ->
+    record_info:proplist_to_record(PropList, userstate, ?MODULE).
+
+
+userremove(PropList) ->
+    record_info:proplist_to_record(PropList, userremove, ?MODULE).
+
+
+%%--------------------------------------------------------------------
+%% @doc
+%% @spec
+%% @end
+%%--------------------------------------------------------------------
 voice_data(<<1:1,Len:7,V1:Len/binary,Rest/binary>>) ->
     {V2,R1} = voice_data(Rest),
     {<<1:1,Len:7,V1:Len/binary,V2/binary>>,R1};
@@ -113,11 +134,11 @@ handle_pb(?MSG_AUTHENTICATE,Msg,{Pid,Key,{Address,_Port}}) ->
 			  R=mumble_pb:encode_channelstate(erlmur_channels:channel(K,CS)),
 			  erlmur_client:send(Pid,encode_message(?MSG_CHANNELSTATE,R))
 		  end, erlmur_channels:list(CS)),
-    US=erlmur_server:userstates(),
+    US=erlmur_users:all_user_states(),
     lists:foreach(fun(K) ->
-			  R=mumble_pb:encode_userstate(erlmur_users:user(K,US)),
+			  R=mumble_pb:encode_userstate(K),
 			  erlmur_client:send(Pid,encode_message(?MSG_USERSTATE,R))
-		  end, erlmur_users:list(US)),
+		  end, US),
     
     {K,DIV,EIV} = ocb128crypt:key(Key),
     CryptSetup = mumble_pb:encode_cryptsetup(#cryptsetup{key=K,
@@ -176,6 +197,9 @@ handle_pb(?MSG_CHANNELSTATE, Msg, _Client) ->
 
 handle_pb(?MSG_CHANNELREMOVE, Msg, _Client) ->
     erlmur_server:channel_remove(mumble_pb:decode_channelremove(Msg));
+
+handle_pb(?MSG_USERSTATE, Msg, _Client) ->
+    erlmur_server:userstate(mumble_pb:decode_userstate(Msg));
 
 handle_pb(Type,Msg,Client) ->
     error_logger:error_report([{erlmur_message,"Unhandled message"},
