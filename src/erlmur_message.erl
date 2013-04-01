@@ -51,8 +51,8 @@ handle(<<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer, Msg:Len/bina
 handle(<<>>,_Client) -> 
     ok;
 
-handle({userstate,UR},{Pid,_Key,_From}) ->
-    R=mumble_pb:encode_userstate(UR),
+handle({userstate,US},{Pid,_Key,_From}) ->
+    R=mumble_pb:encode_userstate(US),
     erlmur_client:send(Pid,encode_message(?MSG_USERSTATE,R));
 
 handle({channelstate,CS},{Pid,_Key,_From}) ->
@@ -176,6 +176,9 @@ handle_pb(?MSG_CHANNELSTATE, Msg, _Client) ->
 
 handle_pb(?MSG_CHANNELREMOVE, Msg, _Client) ->
     erlmur_server:channel_remove(mumble_pb:decode_channelremove(Msg));
+
+handle_pb(?MSG_USERSTATE, Msg, _Client) ->
+    erlmur_server:userstate(mumble_pb:decode_userstate(Msg));
 
 handle_pb(Type,Msg,Client) ->
     error_logger:error_report([{erlmur_message,"Unhandled message"},

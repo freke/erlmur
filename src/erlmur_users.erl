@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(erlmur_users).
 
--export([init/0,count/1,list/1,remove/3,add/4,user/2]).
+-export([init/0,count/1,list/1,remove/3,add/4,user/2,update/2]).
 
 -include("mumble_pb.hrl").
 
@@ -77,3 +77,20 @@ add(Pid,User,Session,#user{users=U,lastid=L}=State) ->
 			      {session_id,UR#userstate.session}]),
     [erlmur_client:newuser(P,UR) || P <- dict:fetch_keys(NU)],
     State#user{users=NU,lastid=L+1}.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% @spec
+%% @end
+%%--------------------------------------------------------------------
+update(UserState,#user{users=U} = State) ->
+    User = dict:filter(fun(_Key,US) -> US#userstate.session =:= UserState#userstate.session end, U),
+    [Pid] = dict:fetch_keys(User),
+    NewUser = list_to_tuple(lists:zipwith(fun(V, undefined) -> V;
+					     (_, V) -> V 
+					  end,
+					  tuple_to_list(dict:fetch(Pid,User)),
+					  tuple_to_list(UserState))),
+    NU=dict:store(Pid, NewUser, U),
+    [erlmur_client:newuser(P,NewUser) || P <- dict:fetch_keys(NU)],
+    State#user{users=NU}.

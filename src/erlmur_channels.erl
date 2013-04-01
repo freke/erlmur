@@ -57,8 +57,8 @@ update(ChannelState = #channelstate{channel_id=undefined},
     State#state{last_id=LastId+1,channels=NC}.
 
 remove(Channel = #channelremove{channel_id=Id},
-      Users,
-      #state{channels=Channels} = State) ->
+       Users,
+       #state{channels=Channels} = State) ->
 
     SubChannels = dict:filter(fun(_,#channelstate{parent=SubId}) -> SubId =:= Id end, Channels),
     NewState = lists:foldl(fun(SubId,Acc) -> remove(#channelremove{channel_id=SubId},Users,Acc) end, 

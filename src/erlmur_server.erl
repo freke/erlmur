@@ -18,6 +18,7 @@
 	 channelstate/1,
 	 channel_remove/1,
 	 userstates/0,
+	 userstate/1,
 	 codecversion/0,
 	 codecversion/1,
 	 serverconfig/0,
@@ -89,6 +90,9 @@ channel_remove(Channel) ->
 
 userstates() ->
     gen_server:call(?SERVER,userstates).
+
+userstate(UserState) ->
+    gen_server:cast(?SERVER,{userstate,UserState}).
 
 codecversion() ->
     gen_server:call(?SERVER,codecversion).
@@ -259,6 +263,10 @@ handle_cast({channelstate,ChannelState},State = #state{channels=C,users=U}) ->
 
 handle_cast({channel_remove,Channel},State = #state{channels=C,users=U}) ->
     NewState = State#state{channels=erlmur_channels:remove(Channel,U,C)},
+    {noreply, NewState};
+
+handle_cast({userstate,UserState}, State = #state{users=U}) ->
+    NewState = State#state{users=erlmur_users:update(UserState,U)},
     {noreply, NewState};
 
 handle_cast(Msg, State) ->
