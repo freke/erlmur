@@ -12,7 +12,7 @@
 	 count/0,
 	 all_user_states/0,
 	 list_clients/0,
-	 get/1,
+	 with_id/1,
 	 find_from_client_pid/1,
 	 find_from_session/1,
 	 remove/2,
@@ -20,9 +20,13 @@
 	 update/1,
 	 list/0,
 	 in_channel/1,
-	 move_to_channel/2]).
+	 move_to_channel/2,
+	 send_to_all/1]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
+-include_lib("record_info/include/record_info.hrl").
+
+-export_record_info([user]).
 
 -record(user,{name,id,session,channel_id,client_pid}).
 -record(counter_entry, {id, value=0}).
@@ -33,8 +37,8 @@
 %% @end
 %%--------------------------------------------------------------------
 init() ->
-    ets:new(users, [set, {keypos,#user.id},named_table]),
-    ets:new(user_counters, [set, {keypos, #counter_entry.id}, named_table]),
+    ets:new(users, [set, {keypos,#user.id},named_table, public]),
+    ets:new(user_counters, [set, {keypos, #counter_entry.id}, named_table, public]),
     ets:insert(user_counters, #counter_entry{id=userid, value=0}).
 
 %%--------------------------------------------------------------------
@@ -85,7 +89,7 @@ find_from_session(Session) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-get(Id) ->
+with_id(Id) ->
     [U] = ets:lookup(users, Id),
     U.
 
@@ -167,29 +171,35 @@ in_channel(ChannelId) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
+move_to_channel([],_) ->
+    ok;
+move_to_channel([User|Users],ChannelId) ->
+    ets:update_element(users, User#user.id, {#user.channel_id,ChannelId}),
+    [U] = ets:lookup(users, User#user.id),
+    send_to_all(userstate(U)),
+    move_to_channel(Users,ChannelId);
 move_to_channel(User,ChannelId) ->
     ets:update_element(users, User#user.id, {#user.channel_id,ChannelId}),
     [U] = ets:lookup(users, User#user.id),
     send_to_all(userstate(U)).
 
-
 %%--------------------------------------------------------------------
-%% Internal
+%% @doc
+%% @spec
+%% @end
 %%--------------------------------------------------------------------
-
 send_to_all(Msg) ->
     ets:foldl(fun(#user{client_pid=P},_) -> 
-		      erlmur_client:newuser(P,Msg) 
+		      P ! Msg
 	      end, 
 	      [], 
 	      users).
 
+%%--------------------------------------------------------------------
+%% Internal
+%%--------------------------------------------------------------------
 userstate(User) ->
-    erlmur_message:userstate([{session,User#user.session},
-			      {name,User#user.name},
-			      {user_id,User#user.id},
-			      {channel_id,User#user.channel_id}]).
+    erlmur_message:userstate(record_info:record_to_proplist(User, ?MODULE)).
 
 userremove(User,Reason) ->
-    erlmur_message:userremove([{session,User#user.session},
-			       {reason,Reason}]).
+    erlmur_message:userremove([{reason,Reason}|record_info:record_to_proplist(User, ?MODULE)]).

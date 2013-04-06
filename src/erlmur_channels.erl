@@ -8,11 +8,21 @@
 %%%-------------------------------------------------------------------
 -module(erlmur_channels).
 
--include("mumble_pb.hrl").
+-export([init/0,
+	 all_channel_states/0,
+	 find_by_id/1, 
+	 list/0,
+	 add/1,
+	 update/1,
+	 remove/1]).
 
--export([init/0,channel/2,list/1,update/2,remove/2]).
+-include_lib("stdlib/include/ms_transform.hrl").
+-include_lib("record_info/include/record_info.hrl").
 
--record(state,{last_id,channels}).
+-record(channel,{channel_id,parent,name}).
+-record(counter_entry, {id, value=0}).
+
+-export_record_info([channel]).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -20,57 +30,95 @@
 %% @end
 %%--------------------------------------------------------------------
 init() ->
-    #state{last_id = 0,
-	   channels = dict:store(0, #channelstate{ channel_id=0,parent=0, name= <<"Root">>}, dict:new())}.
+    ets:new(channels, [set, {keypos,#channel.channel_id},named_table, public]),
+    ets:new(channel_counters, [set, {keypos, #counter_entry.id}, named_table, public]),
+    ets:insert(channel_counters, #counter_entry{id=channelid, value=0}).
 
 %%--------------------------------------------------------------------
 %% @doc
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-channel(Key, #state{channels=Channels}) ->
-    dict:fetch(Key,Channels).
+find_by_id(ChannelId) ->
+    Match = ets:fun2ms(fun(X = #channel{channel_id=Id}) when Id =:= ChannelId -> X end),
+    ets:select(channels, Match).
 
 %%--------------------------------------------------------------------
 %% @doc
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-list(#state{channels=Channels}) ->
-    dict:fetch_keys(Channels).
+list() ->
+    ets:foldl(fun(Channel,Acc) -> [Channel|Acc] end, [], channels).
 
 %%--------------------------------------------------------------------
 %% @doc
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-update(ChannelState = #channelstate{channel_id=undefined},
-       #state{last_id=LastId,channels=Channels} = State) ->
-    error_logger:info_report([{erlmur_channels,update},
-			      "New channel",
-			      {channel, LastId+1},
-			      {name,ChannelState#channelstate.name}]),
-    CS = ChannelState#channelstate{channel_id=LastId+1},
-    NC = dict:store(LastId+1,CS,Channels),
-    [erlmur_client:channelstate(P,CS) || P <- erlmur_users:list_clients()],
-    State#state{last_id=LastId+1,channels=NC}.
+add(Channel) ->
+    ChannelId = ets:update_counter(channel_counters, channelid, {#counter_entry.value, 1}),
+    C = record_info:proplist_to_record(Channel, channel, ?MODULE),
+    NewChannel = C#channel{channel_id=ChannelId},
+    ets:insert(channels,NewChannel),
+    erlmur_users:send_to_all(channelstate(NewChannel)),
+    error_logger:info_report([{erlmur_channels,add},{channel,NewChannel}]),
+    NewChannel.
 
 %%--------------------------------------------------------------------
 %% @doc
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-remove(Channel = #channelremove{channel_id=Id},
-       #state{channels=Channels} = State) ->
+update(Channel) ->
+    [C] = find_by_id(proplists:get_value(channel_id,Channel)),
+    NewChannel = update(Channel,C),
+    erlmur_users:send_to_all(channelstate(NewChannel)),
+    error_logger:info_report([{erlmur_channels,update},{channel,NewChannel}]),
+    NewChannel.
 
-    SubChannels = dict:filter(fun(_,#channelstate{parent=SubId}) -> SubId =:= Id end, Channels),
-    NewState = lists:foldl(fun(SubId,Acc) -> remove(#channelremove{channel_id=SubId},Acc) end, 
-			   State, 
-			   dict:fetch_keys(SubChannels)),
-		
-    error_logger:info_report([{erlmur_cahnnels,remove},
-			      {channel, Id}]),
-    lists:foreach(fun(U) -> erlmur_users:move_to_channel(U,0) end, erlmur_users:in_channel(Id)),
-    NC = dict:erase(Id,Channels),
-    [erlmur_client:channelremove(P,Channel) || P <- erlmur_users:list_clients()],
-    NewState#state{channels=NC}.
+update([],C) ->
+    C;
+update([{parent,Parent}|Rest],C) ->
+    update(Rest,C#channel{parent=Parent});
+update([{name,Name}|Rest],C) ->
+    update(Rest,C#channel{name=Name});
+update([_|Rest],C) ->
+    update(Rest,C).
+
+    
+%%--------------------------------------------------------------------
+%% @doc
+%% @spec
+%% @end
+%%--------------------------------------------------------------------
+remove([]) ->
+    ok;
+remove([Channel|Channels]) ->
+    Match = ets:fun2ms(fun(X = #channel{parent=Id}) when Id =:= Channel#channel.channel_id -> X end),
+    SubChannels = ets:select(channels, Match),
+
+    remove(SubChannels),
+
+    lists:foreach(fun(U) -> erlmur_users:move_to_channel(U,0) end, erlmur_users:in_channel(Channel#channel.channel_id)),
+    ets:delete(channels,Channel#channel.channel_id),
+    erlmur_users:send_to_all(channelremove(Channel)),
+    error_logger:info_report([{erlmur_channels,remove},{channel,Channel}]),
+    remove(Channels).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% @spec
+%% @end
+%%--------------------------------------------------------------------
+all_channel_states() ->
+    ets:foldl(fun(Channel,Acc) -> [channelstate(Channel)|Acc] end, [], channels).
+
+%%--------------------------------------------------------------------
+%% Internal
+%%--------------------------------------------------------------------
+channelstate(Channel) ->
+    erlmur_message:channelstate(record_info:record_to_proplist(Channel, ?MODULE)).
+
+channelremove(Channel) ->
+    erlmur_message:channelremove(record_info:record_to_proplist(Channel, ?MODULE)).

@@ -9,12 +9,12 @@
 
 -export([handle/2,handle_udp/2]).
 
--export([userremove/1,userstate/1,proplist/1]).
+-export([userremove/1,userstate/1,channelstate/1,channelremove/1,proplist/1]).
 
 -include("mumble_pb.hrl").
 -include_lib("record_info/include/record_info.hrl").
 
--export_record_info([userstate,userremove]).
+-export_record_info([userstate,userremove,channelstate,channelremove]).
 
 -define(MSG_VERSION, 16#00).
 -define(MSG_UDPTUNNEL, 16#01).
@@ -56,23 +56,33 @@ handle(<<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer, Msg:Len/bina
 handle(<<>>,_Client) -> 
     ok;
 
-handle({userstate,US},{Pid,_Key,_From}) ->
+handle(Msg,Client) when is_tuple(Msg) ->
+    MsgType = element(1,Msg),
+    send(MsgType,Msg,Client).
+
+
+%%--------------------------------------------------------------------
+%% @doc
+%% @spec
+%% @end
+%%--------------------------------------------------------------------
+send(userstate,US,{Pid,_Key,_From}) ->
     R=mumble_pb:encode_userstate(US),
     erlmur_client:send(Pid,encode_message(?MSG_USERSTATE,R));
 
-handle({channelstate,CS},{Pid,_Key,_From}) ->
+send(channelstate,CS,{Pid,_Key,_From}) ->
     R=mumble_pb:encode_channelstate(CS),
     erlmur_client:send(Pid,encode_message(?MSG_CHANNELSTATE,R));
 
-handle({channelremove,C},{Pid,_Key,_From}) ->
+send(channelremove,C,{Pid,_Key,_From}) ->
     R=mumble_pb:encode_channelremove(C),
     erlmur_client:send(Pid,encode_message(?MSG_CHANNELREMOVE,R));
 
-handle({deluser,UR},{Pid,_Key,_From}) ->
+send(userremove,UR,{Pid,_Key,_From}) ->
     R=mumble_pb:encode_userremove(UR),
     erlmur_client:send(Pid,encode_message(?MSG_USERREMOVE,R));
 
-handle({udp_tunnle,Data},{Pid,_Key,_From}) ->
+send(udp_tunnle,Data,{Pid,_Key,_From}) ->
     erlmur_client:send(Pid,encode_message(?MSG_UDPTUNNEL,Data)).
 
 %%--------------------------------------------------------------------
@@ -105,6 +115,11 @@ userstate(PropList) ->
 userremove(PropList) ->
     record_info:proplist_to_record(PropList, userremove, ?MODULE).
 
+channelstate(PropList) ->
+    record_info:proplist_to_record(PropList, channelstate, ?MODULE).
+
+channelremove(PropList) ->
+    record_info:proplist_to_record(PropList, channelremove, ?MODULE).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -129,11 +144,10 @@ handle_pb(?MSG_VERSION,_Msg,{Pid,_Key,_From}) ->
 handle_pb(?MSG_AUTHENTICATE,Msg,{Pid,Key,{Address,_Port}}) ->
     {_,U,P,_T,C,_O} = mumble_pb:decode_authenticate(Msg),
     Sid=erlmur_server:authenticate(U,P,Address),
-    CS=erlmur_server:channelstates(),
     lists:foreach(fun(K) ->
-			  R=mumble_pb:encode_channelstate(erlmur_channels:channel(K,CS)),
+			  R=mumble_pb:encode_channelstate(erlmur_channels:channel(K)),
 			  erlmur_client:send(Pid,encode_message(?MSG_CHANNELSTATE,R))
-		  end, erlmur_channels:list(CS)),
+		  end, erlmur_channels:list()),
     US=erlmur_users:all_user_states(),
     lists:foreach(fun(K) ->
 			  R=mumble_pb:encode_userstate(K),
@@ -216,8 +230,3 @@ encode_message(Type, Msg) ->
     BMsg = erlang:iolist_to_binary(Msg),
     Len = byte_size(BMsg),
     <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer,BMsg/binary>>.
-
-
-
-
-

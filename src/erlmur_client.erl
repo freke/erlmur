@@ -15,15 +15,10 @@
 	 send/2,
 	 send_udp/2, 
 	 update_key_remote/2, 
-	 newuser/2, 
-	 deluser/2,
 	 cryptkey/1,
 	 handle_msg/3,
 	 session_id/1, 
-	 session_id/2,
-	 udp_tunnel/1,
-	 channelstate/2,
-	 channelremove/2]).
+	 session_id/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -43,12 +38,6 @@ send(Pid,Data) ->
 send_udp(Pid,Data) ->
     gen_server:cast(Pid,{send_udp, Data}).
 
-newuser(Pid,UserState) ->
-    gen_server:cast(Pid,{userstate,UserState}).
-
-deluser(Pid,UserState) ->
-    gen_server:cast(Pid,{deluser,UserState}).
-
 cryptkey(Pid) ->
     gen_server:call(Pid,cryptkey).
 
@@ -63,15 +52,6 @@ session_id(Pid) ->
 
 session_id(Pid,Sid) ->
     gen_server:cast(Pid,{sid,Sid}).
-
-udp_tunnel(Pid) ->
-    gen_server:cast(Pid,udp_tunnel).
-
-channelstate(Pid,ChannelState) ->
-    gen_server:cast(Pid,{channelstate,ChannelState}).
-
-channelremove(Pid,Channel) ->
-    gen_server:cast(Pid,{channel_remove,Channel}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -142,16 +122,6 @@ handle_cast({socket,Socket}, State) ->
     error_logger:info_msg("New connection~n"),
     {noreply, State#state{socket=Socket,cryptkey=Key}};
 
-handle_cast({userstate,UR},State=#state{socket=Socket,cryptkey=Key}) ->
-    {ok, {Address, Port}} = ssl:peername(Socket),
-    erlmur_message:handle({userstate,UR},{self(),Key,{Address, Port}}),
-    {noreply,State};
-
-handle_cast({deluser,UR},State=#state{socket=Socket,cryptkey=Key}) ->
-    {ok, {Address, Port}} = ssl:peername(Socket),
-    erlmur_message:handle({deluser,UR},{self(),Key, {Address, Port}}),
-    {noreply,State};
-
 handle_cast({send,Data},#state{socket=Socket}=State) ->
     ssl:send(Socket, Data),
     {noreply, State};
@@ -197,19 +167,6 @@ handle_cast({sid,Sid}, State) ->
     error_logger:info_msg("New user ~w~n",[Sid]),
     {noreply,State#state{sid=Sid}};
 
-handle_cast(udp_tunnel, State) ->
-    {noreply,State#state{use_udp_tunnle=true}};
-
-handle_cast({channelstate,ChannelState}, #state{cryptkey=Key,socket=Socket} = State) ->
-    {ok, {Address, Port}} = ssl:peername(Socket),
-    erlmur_message:handle({channelstate,ChannelState}, {self(), Key, {Address, Port}}),
-    {noreply,State};
-
-handle_cast({channel_remove,Channel}, #state{cryptkey=Key,socket=Socket} = State) ->
-    {ok, {Address, Port}} = ssl:peername(Socket),
-    erlmur_message:handle({channelremove,Channel}, {self(), Key, {Address, Port}}),
-    {noreply,State};
-
 handle_cast(Msg, State) ->
     error_logger:info_report([{?MODULE,"Unhandled message"},{msg,Msg}]),
     {noreply, State}.
@@ -237,7 +194,12 @@ handle_info(timeout,State) ->
 handle_info({ssl_closed, _S}, State = #state{sid=Sid}) ->
     error_logger:info_msg("~w Disconnected!~n", [Sid]),
     erlmur_server:deluser(),
-    {stop, normal, State}.
+    {stop, normal, State};
+
+handle_info(Msg, State = #state{socket=Socket,cryptkey=Key}) ->
+    {ok, {Address, Port}} = ssl:peername(Socket),
+    erlmur_message:handle(Msg,{self(),Key,{Address, Port}}),
+    {noreply,State}.
 
 %%--------------------------------------------------------------------
 %% @private

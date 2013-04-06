@@ -57,7 +57,7 @@
 
 -include("mumble_pb.hrl").
 
--record(state, {channels,cryptkeys,lastsid,clients}).
+-record(state, {cryptkeys,lastsid,clients}).
 
 %%%===================================================================
 %%% API
@@ -137,9 +137,9 @@ voice_data(Type,Target,ClientPid,Counter,Voice,Positional) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    C=erlmur_channels:init(),
+    erlmur_channels:init(),
     erlmur_users:init(),
-    {ok, #state{channels=C, lastsid=0, clients=dict:new()}}.
+    {ok, #state{lastsid=0, clients=dict:new()}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -181,8 +181,8 @@ handle_call({authenticate,User,Pass,Address}, {Pid,_}, #state{lastsid=Session,cl
 
 handle_call(channelstates, 
 	    _From, 
-	    #state{channels=C}=State) ->
-    {reply, C, State};
+	    State) ->
+    {reply, erlmur_channels:all_channel_states(), State};
 
 handle_call(userstates, 
 	    _From, 
@@ -257,13 +257,17 @@ handle_cast({voice_data,Type,Target,Pid,_Counter,_Voice,_Positional},State) ->
     error_logger:info_report([{erlmur_server,voice_data},{type,Type},{target,Target},{session_id,Sid}]),
     {noreply, State};
 
-handle_cast({channelstate,ChannelState},State = #state{channels=C}) ->
-    NewState = State#state{channels=erlmur_channels:update(ChannelState,C)},
-    {noreply, NewState};
+handle_cast({channelstate,ChannelState},State) ->
+    PropList = erlmur_message:proplist(ChannelState),
+    case proplists:get_value(channel_id,PropList) of
+	undefined -> erlmur_channels:add(PropList);
+	_ -> erlmur_channels:update(PropList)
+    end,
+    {noreply, State};
 
-handle_cast({channel_remove,Channel},State = #state{channels=C}) ->
-    NewState = State#state{channels=erlmur_channels:remove(Channel,C)},
-    {noreply, NewState};
+handle_cast({channel_remove,Channel},State) ->
+    erlmur_channels:remove(erlmur_channels:find_by_id(proplists:get_value(channel_id,erlmur_message:proplist(Channel)))),
+    {noreply, State};
 
 handle_cast({userstate,UserState}, State) ->
     erlmur_users:update(erlmur_message:proplist(UserState)),
