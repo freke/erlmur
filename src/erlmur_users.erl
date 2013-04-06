@@ -184,4 +184,12 @@ send_to_all(Msg) ->
 	      [], 
 	      users).
 
+userstate(User) ->
+    erlmur_message:userstate([{session,User#user.session},
+			      {name,User#user.name},
+			      {user_id,User#user.id},
+			      {channel_id,User#user.channel_id}]).
 
+userremove(User,Reason) ->
+    erlmur_message:userremove([{session,User#user.session},
+			       {reason,Reason}]).
