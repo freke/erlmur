@@ -26,7 +26,6 @@
 	 permissionquery/1,
 	 deluser/0,
 	 usercount/0,
-	 client_session/1,
 	 voice_data/6]).
 
 %% gen_server callbacks
@@ -57,7 +56,7 @@
 
 -include("mumble_pb.hrl").
 
--record(state, {cryptkeys,lastsid,clients}).
+-record(state, {}).
 
 %%%===================================================================
 %%% API
@@ -115,9 +114,6 @@ deluser() ->
 usercount() ->
     gen_server:call(?SERVER,usercount).
 
-client_session(Address) ->
-    gen_server:call(?SERVER,{client_session,Address}).
-
 voice_data(Type,Target,ClientPid,Counter,Voice,Positional) ->
     gen_server:cast(?SERVER,{voice_data,Type,Target,ClientPid,Counter,Voice,Positional}).
 
@@ -139,7 +135,7 @@ voice_data(Type,Target,ClientPid,Counter,Voice,Positional) ->
 init([]) ->
     erlmur_channels:init(),
     erlmur_users:init(),
-    {ok, #state{lastsid=0, clients=dict:new()}}.
+    {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -169,15 +165,14 @@ handle_call(version, _From, State) ->
 		     os = list_to_binary(OsNameString),
 		     os_version = list_to_binary(OsVersion)}, State};
 
-handle_call({authenticate,User,Pass,Address}, {Pid,_}, #state{lastsid=Session,clients=C} = State) ->
+handle_call({authenticate,User,Pass,Address}, {Pid,_}, State) ->
     error_logger:info_report([{erlmur_server,handle_call},
 			      {authenticate,User},
 			      {pass,Pass},
 			      {address,Address}]),
-    NC=dict:store(Address,Pid,C),
-    erlmur_users:add(Pid,User,Session+1),
+    Session = erlmur_users:add(Pid,User,Address),
     erlang:monitor(process, Pid),
-    {reply, Session+1, State#state{lastsid=Session+1, clients=NC}};
+    {reply, Session, State};
 
 handle_call(channelstates, 
 	    _From, 
@@ -217,16 +212,12 @@ handle_call({permissionquery,Perm}, _From, S) ->
     {reply, Perm#permissionquery{permissions=?PERM_ALL}, S};
 
 handle_call(deluser,{Pid,_}, State) ->
-    erlmur_users:remove(erlmur_users:find_from_client_pid(Pid),<<"Disconnected">>),
+    removeuser(Pid,<<"Disconnected">>),
     {reply, ok, State};
 
 handle_call(usercount, _From, State) ->
-    NumUsers = erlmur_users:count(),
+    NumUsers = proplists:get_value(workers,supervisor:count_children(erlmur_client_sup)),
     {reply, {NumUsers,10}, State};
-
-handle_call({client_session,Address}, _From, #state{clients=C}=State) ->
-    Pid = dict:find(Address,C),
-    {reply,Pid,State};
 
 handle_call(Request, _From, State) ->
     error_logger:info_report([{erlmur_server,handle_call},{unhandled_request,Request}]),
@@ -288,11 +279,11 @@ handle_cast(Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info({'DOWN',_Ref,process,Pid,Reason}, State) when is_atom(Reason)->
-    erlmur_users:remove(erlmur_users:find_from_client_pid(Pid),atom_to_binary(Reason,latin1)),
+    removeuser(Pid,atom_to_binary(Reason,latin1)),
     {noreply, State};
 
 handle_info({'DOWN',_Ref,process,Pid,Reason}, State) ->
-    erlmur_users:remove(erlmur_users:find_from_client_pid(Pid),list_to_binary(Reason)),
+    removeuser(Pid,list_to_binary(Reason)),
     {noreply, State};
 
 handle_info(Info, State) ->
@@ -328,3 +319,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+removeuser(Pid,Reason) ->
+    User = erlmur_users:find_from_client_pid(Pid),
+    erlmur_users:remove(User,Reason).

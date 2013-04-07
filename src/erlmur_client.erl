@@ -150,11 +150,6 @@ handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket}
 		     erlmur_message:handle_udp(Msg, {self(), K, {Address, Port}}),
 		     K;
 		 error ->
-		     error_logger:error_report([{erlmur_client,handle_msg},
-						{port,Port},
-						{msg,EncryptedMsg},
-						{key,Key},
-						{socket,Socket}]),
 		     Key
 	     end,
     {noreply,State#state{cryptkey=NewKey, udp_port=PortNo, use_udp_tunnle=false}};

@@ -116,10 +116,12 @@ handle_info({udp, _Socket, IP, PortNo, <<0:32,Timestamp:64>>}, State) ->
 		     MaxBandwidth:32>>),
     {noreply,State};
 handle_info({udp, _Socket, IP, PortNo, EncryptedMsg}, State) ->
-    case erlmur_server:client_session(IP) of
-	{ok,ClientPid} -> erlmur_client:handle_msg(ClientPid,PortNo,EncryptedMsg);
-	_ -> error_logger:info_msg("Can't find user session.")
-    end,
+    Users = erlmur_users:find_by_address(IP),
+    lists:foreach(fun(User) -> 
+			  Pid = erlmur_users:client_pid(User),
+			  erlmur_client:handle_msg(Pid,PortNo,EncryptedMsg)
+		  end,
+		  Users),
     {noreply, State};
 handle_info(Info, State) ->
     error_logger:info_report([{erlmur_udp_server,"Unhandled info"},{info,Info}]),

@@ -9,12 +9,14 @@
 -module(erlmur_users).
 
 -export([init/0,
+	 client_pid/1,
 	 count/0,
 	 all_user_states/0,
 	 list_clients/0,
 	 with_id/1,
 	 find_from_client_pid/1,
 	 find_from_session/1,
+	 find_by_address/1,
 	 remove/2,
 	 add/3,
 	 update/1,
@@ -28,7 +30,7 @@
 
 -export_record_info([user]).
 
--record(user,{name,id,session,channel_id,client_pid}).
+-record(user,{name,id,address,session,channel_id,client_pid}).
 -record(counter_entry, {id, value=0}).
 
 %%--------------------------------------------------------------------
@@ -39,7 +41,16 @@
 init() ->
     ets:new(users, [set, {keypos,#user.id},named_table, public]),
     ets:new(user_counters, [set, {keypos, #counter_entry.id}, named_table, public]),
-    ets:insert(user_counters, #counter_entry{id=userid, value=0}).
+    ets:insert(user_counters, #counter_entry{id=userid, value=0}),
+    ets:insert(user_counters, #counter_entry{id=sessionid, value=0}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% @spec
+%% @end
+%%--------------------------------------------------------------------
+client_pid(User) ->
+    User#user.client_pid.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -89,6 +100,15 @@ find_from_session(Session) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
+find_by_address(Address) ->
+    Match = ets:fun2ms(fun(X = #user{address=A}) when Address =:= A -> X end),
+    ets:select(users, Match).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% @spec
+%% @end
+%%--------------------------------------------------------------------
 with_id(Id) ->
     [U] = ets:lookup(users, Id),
     U.
@@ -113,15 +133,21 @@ remove(User, Reason) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-add(Pid,Name,Session) ->
+add(Pid,Name,Address) ->
     UserId = ets:update_counter(user_counters, userid, {#counter_entry.value, 1}),
-    User=#user{name=Name,id=UserId,session=Session,client_pid=Pid,channel_id=0},
+    SessionId = ets:update_counter(user_counters, sessionid, {#counter_entry.value, 1}),
+    User=#user{name=Name,
+	       id=UserId,
+	       session=SessionId,
+	       address=Address,
+	       client_pid=Pid,
+	       channel_id=0},
     ets:insert(users,User),
     error_logger:info_report([{erlmur_server,add_user},
 			      {name,Name},
-			      {session_id,Session}]),
+			      {session_id,SessionId}]),
     send_to_all(userstate(User)),
-    User.
+    SessionId.
 
 %%--------------------------------------------------------------------
 %% @doc

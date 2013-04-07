@@ -51,7 +51,7 @@ add_user(_) ->
      ?_assert(meck:validate(erlmur_client))].
 
 move_user_to_channel(_) ->
-    U = erlmur_users:add(self(),user1,1),
+    U = add_user(self(),user1,1),
     erlmur_users:move_to_channel(U,1),
     [?_assertEqual(1, erlmur_users:count()),
      ?_assertEqual(0, length(erlmur_users:in_channel(0))),
@@ -59,8 +59,8 @@ move_user_to_channel(_) ->
      ?_assert(meck:validate(erlmur_client))].
 
 remove_user(_) ->
-    U1 = erlmur_users:add(self(),user1,1),
-    U2 = erlmur_users:add(self(),user2,2),
+    U1 = add_user(self(),user1,1),
+    U2 = add_user(self(),user2,2),
     erlmur_users:remove(U1,"Test"),
     [?_assertEqual(1, erlmur_users:count()),
      ?_assertEqual(1, length(erlmur_users:in_channel(0))),
@@ -68,12 +68,18 @@ remove_user(_) ->
 
 find_user_from_pid(_) ->
     Pid = self(),
-    U1 = erlmur_users:add(Pid,user1,1),
+    U1 = add_user(Pid,user1,1),
     [?_assertEqual([U1], erlmur_users:find_from_client_pid(Pid)),
      ?_assert(meck:validate(erlmur_client))].
 
 list_users(_) ->
-    U1 = erlmur_users:add(self(),user1,1),
-    U2 = erlmur_users:add(self(),user2,2),
+    U1 = add_user(self(),user1,1),
+    U2 = add_user(self(),user2,2),
     [?_assertEqual(2, erlmur_users:count()),
      ?_assertEqual(2, length(erlmur_users:list()))].
+
+%%%%%%%%%%%%%%%%%%%%%%
+%%% HELP FUNCTIONS %%%
+%%%%%%%%%%%%%%%%%%%%%%
+add_user(Pid,User,Address) ->
+    erlmur_users:find_from_session(erlmur_users:add(Pid,User,Address)).
