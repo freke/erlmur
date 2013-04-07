@@ -144,10 +144,11 @@ handle_pb(?MSG_VERSION,_Msg,{Pid,_Key,_From}) ->
 handle_pb(?MSG_AUTHENTICATE,Msg,{Pid,Key,{Address,_Port}}) ->
     {_,U,P,_T,C,_O} = mumble_pb:decode_authenticate(Msg),
     Sid=erlmur_server:authenticate(U,P,Address),
+    CS = erlmur_channels:all_channel_states(), 
     lists:foreach(fun(K) ->
-			  R=mumble_pb:encode_channelstate(erlmur_channels:channel(K)),
+			  R=mumble_pb:encode_channelstate(K),
 			  erlmur_client:send(Pid,encode_message(?MSG_CHANNELSTATE,R))
-		  end, erlmur_channels:list()),
+		  end, CS),
     US=erlmur_users:all_user_states(),
     lists:foreach(fun(K) ->
 			  R=mumble_pb:encode_userstate(K),
