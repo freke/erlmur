@@ -13,7 +13,8 @@
 %% API
 -export([start_link/0,
 	 send/2,
-	 send_udp/2, 
+	 send_udp/2,
+	 udp_tunnel/1,
 	 update_key_remote/2, 
 	 cryptkey/1,
 	 handle_msg/3,
@@ -27,7 +28,7 @@
 -define(SERVER, ?MODULE). 
 -define(MAX_IDLE_MS,30000).
 
--record(state, {socket,cryptkey,udp_port,sid,use_udp_tunnle=true}).
+-record(state, {socket,cryptkey,udp_port,sid,use_udp_tunnel=true}).
 
 %%%===================================================================
 %%% API
@@ -37,6 +38,9 @@ send(Pid,Data) ->
 
 send_udp(Pid,Data) ->
     gen_server:cast(Pid,{send_udp, Data}).
+
+udp_tunnel(Pid) ->
+    gen_server:cast(Pid,use_udp_tunnel).
 
 cryptkey(Pid) ->
     gen_server:call(Pid,cryptkey).
@@ -132,27 +136,27 @@ handle_cast({send_udp,<<1:3,0:5,_/binary>>=Data},State=#state{socket=Socket,udp_
     erlmur_udp_server:send(Address,Port,Msg),
     {noreply, State#state{cryptkey=NewKey}};
 
-handle_cast({send_udp,Data},State=#state{socket=Socket,udp_port=Port,cryptkey=Key,use_udp_tunnle=false}) ->
+handle_cast({send_udp,Data},State=#state{socket=Socket,udp_port=Port,cryptkey=Key,use_udp_tunnel=false}) ->
     {ok, {Address, _}} = ssl:peername(Socket),
     {Msg,NewKey} = ocb128crypt:encrypt(Key,Data),
     erlmur_udp_server:send(Address,Port,Msg),
     {noreply, State#state{cryptkey=NewKey}};
 
-handle_cast({send_udp,Data},State=#state{socket=Socket,cryptkey=Key,use_udp_tunnle=true}) ->
+handle_cast({send_udp,Data},State=#state{socket=Socket,cryptkey=Key,use_udp_tunnel=true}) ->
     {ok, {Address, Port}} = ssl:peername(Socket),
     erlmur_message:handle({udp_tunnle,Data},{self(),Key,{Address,Port}}),
     {noreply, State};
 
 handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket} = State) ->
     {ok, {Address, Port}} = ssl:peername(Socket),
-    NewKey = case ocb128crypt:decrypt(Key, EncryptedMsg) of
-		 {Msg,K} ->
-		     erlmur_message:handle_udp(Msg, {self(), K, {Address, Port}}),
-		     K;
+    NewState = case ocb128crypt:decrypt(Key, EncryptedMsg) of
+		 {Msg,NewKey} ->
+		     erlmur_message:handle_udp(Msg, {self(), NewKey, {Address, Port}}),
+		     State#state{cryptkey=NewKey, udp_port=PortNo, use_udp_tunnel=false};
 		 error ->
-		     Key
+		     State
 	     end,
-    {noreply,State#state{cryptkey=NewKey, udp_port=PortNo, use_udp_tunnle=false}};
+    {noreply,NewState};
 
 handle_cast({update_key_remote,{Good,Late,Lost,Resync}}, State = #state{cryptkey=Key}) ->
     NewKey = ocb128crypt:remote(Good,Late,Lost,Resync,Key),
@@ -161,6 +165,9 @@ handle_cast({update_key_remote,{Good,Late,Lost,Resync}}, State = #state{cryptkey
 handle_cast({sid,Sid}, State) ->
     error_logger:info_msg("New user ~w~n",[Sid]),
     {noreply,State#state{sid=Sid}};
+
+handle_cast(use_udp_tunnel, State) ->
+    {noreply,State#state{use_udp_tunnel=true}};
 
 handle_cast(Msg, State) ->
     error_logger:info_report([{?MODULE,"Unhandled message"},{msg,Msg}]),

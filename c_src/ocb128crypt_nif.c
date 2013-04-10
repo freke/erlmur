@@ -9,12 +9,6 @@ load(ErlNifEnv* env, void** priv, ERL_NIF_TERM load_info)
 }
 
 static int
-reload(ErlNifEnv* env, void** priv, ERL_NIF_TERM load_info)
-{
-    return 0;
-}
-
-static int
 upgrade(ErlNifEnv* env, void** priv, void** old_priv,
           ERL_NIF_TERM load_info)
 {
@@ -64,15 +58,13 @@ pack(cryptState_t *cs, ErlNifEnv* env)
 }
 
 int
-unpack(cryptState_t *cs, const ERL_NIF_TERM** tuple, ErlNifEnv* env, const ERL_NIF_TERM argv[])
+unpack(cryptState_t *cs, const ERL_NIF_TERM tuple[], ErlNifEnv* env)
 {
   ErlNifBinary p_key, p_div, p_eiv, p_history;
 
   const ERL_NIF_TERM** local_tuple;
   const ERL_NIF_TERM** remote_tuple;
   int ar;
-  
-  long bin_size = 0;
   
   if(!enif_inspect_binary(env, tuple[0], &p_key) || p_key.size != AES_BLOCK_SIZE)
     return FALSE;
@@ -128,14 +120,14 @@ encrypt_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
   cryptState_t cs;
   ErlNifBinary p_source;
-  const ERL_NIF_TERM** tuple;
+  const ERL_NIF_TERM* tuple;
   int ar;
 
   if(!enif_get_tuple(env, argv[0], &ar, &tuple) || ar != 6 ||
      !enif_inspect_binary(env, argv[1], &p_source))
     return enif_make_badarg(env);
   
-  if(!unpack(&cs, tuple, env, argv))
+  if(!unpack(&cs, tuple, env))
     return enif_make_badarg(env);
 
 
@@ -155,14 +147,14 @@ decrypt_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
   cryptState_t cs;
   ErlNifBinary p_source;
-  const ERL_NIF_TERM** tuple;
+  const ERL_NIF_TERM* tuple;
   int ar;
 
   if(!enif_get_tuple(env, argv[0], &ar, &tuple) || ar != 6 ||
      !enif_inspect_binary(env, argv[1], &p_source))
     return enif_make_badarg(env);
   
-  if(!unpack(&cs, tuple, env, argv))
+  if(!unpack(&cs, tuple, env))
     return enif_make_badarg(env);
 
 
@@ -185,4 +177,4 @@ static ErlNifFunc nif_funcs[] = {
     {"decrypt", 2, decrypt_nif}
 };
 
-ERL_NIF_INIT(ocb128crypt, nif_funcs, load, reload, upgrade, unload)
+ERL_NIF_INIT(ocb128crypt, nif_funcs, load, NULL, upgrade, unload)

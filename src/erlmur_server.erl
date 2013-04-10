@@ -238,14 +238,30 @@ handle_cast({codecversion,_C}, State) ->
     {noreply, State};
 
 handle_cast({voice_data,Type,16#1F,Pid,Counter,Voice,_Positional},State) ->
-    Sid = erlmur_varint:encode(erlmur_client:session_id(Pid)),
+    [User] = erlmur_users:find_from_client_pid(Pid),
+    Sid = erlmur_users:session(User),
     C = erlmur_varint:encode(Counter),
-    erlmur_client:send_udp(Pid,<<Type:3,0:5,Sid/binary,C/binary,Voice/binary>>),
+    EncodedSid = erlmur_varint:encode(Sid),
+    erlmur_client:send_udp(Pid,<<Type:3,0:5,EncodedSid/binary,C/binary,Voice/binary>>),
     {noreply, State};
 
-handle_cast({voice_data,Type,Target,Pid,_Counter,_Voice,_Positional},State) ->
-    Sid = erlmur_client:session_id(Pid),
-    error_logger:info_report([{erlmur_server,voice_data},{type,Type},{target,Target},{session_id,Sid}]),
+handle_cast({voice_data,Type,16#00,Pid,Counter,Voice,Positional},State) ->
+    [User] = erlmur_users:find_from_client_pid(Pid),
+    Sid = erlmur_users:session(User),
+    ChannelId = erlmur_users:channel_id(User),
+    Users = lists:filter(fun(U) -> erlmur_users:session(U) =/= Sid end, erlmur_users:in_channel(ChannelId)),
+    C = erlmur_varint:encode(Counter),
+    EncodedSid = erlmur_varint:encode(Sid),
+    lists:foreach(fun(U) ->
+			  P = erlmur_users:client_pid(U),
+			  erlmur_client:send_udp(P,
+						 <<Type:3,
+						   0:5,
+						   EncodedSid/binary,
+						   C/binary,
+						   Voice/binary,
+						   Positional/binary>>) 
+		  end, Users),
     {noreply, State};
 
 handle_cast({channelstate,ChannelState},State) ->

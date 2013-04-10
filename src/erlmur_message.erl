@@ -82,7 +82,7 @@ send(userremove,UR,{Pid,_Key,_From}) ->
     R=mumble_pb:encode_userremove(UR),
     erlmur_client:send(Pid,encode_message(?MSG_USERREMOVE,R));
 
-send(udp_tunnle,Data,{Pid,_Key,_From}) ->
+send(udp_tunnle,{_,Data},{Pid,_Key,_From}) ->
     erlmur_client:send(Pid,encode_message(?MSG_UDPTUNNEL,Data)).
 
 %%--------------------------------------------------------------------
@@ -227,7 +227,9 @@ handle_pb(Type,Msg,Client) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-encode_message(Type, Msg) ->
-    BMsg = erlang:iolist_to_binary(Msg),
-    Len = byte_size(BMsg),
-    <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer,BMsg/binary>>.
+encode_message(Type, Msg) when is_list(Msg) ->
+    encode_message(Type, erlang:iolist_to_binary(Msg));
+
+encode_message(Type, Msg) when is_binary(Msg) ->
+    Len = byte_size(Msg),
+    <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer,Msg/binary>>.
