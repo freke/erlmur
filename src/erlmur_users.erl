@@ -110,8 +110,7 @@ find_from_client_pid(Pid) ->
 %%--------------------------------------------------------------------
 find_from_session(Session) ->
     Match = ets:fun2ms(fun(X = #user{session=S}) when Session =:= S -> X end),
-    [U] = ets:select(users, Match),
-    U.
+    ets:select(users, Match).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -128,8 +127,7 @@ find_by_address(Address) ->
 %% @end
 %%--------------------------------------------------------------------
 with_id(Id) ->
-    [U] = ets:lookup(users, Id),
-    U.
+    ets:lookup(users, Id).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -139,8 +137,7 @@ with_id(Id) ->
 remove([], _Reason) ->
     ok;
 remove([User|Users], Reason) ->
-    ets:delete(users,User#user.id),
-    send_to_all(userremove(User,Reason)),
+    remove(User,Reason),
     remove(Users,Reason);
 remove(User, Reason) ->
     ets:delete(users,User#user.id),
@@ -218,9 +215,7 @@ in_channel(ChannelId) ->
 move_to_channel([],_) ->
     ok;
 move_to_channel([User|Users],ChannelId) ->
-    ets:update_element(users, User#user.id, {#user.channel_id,ChannelId}),
-    [U] = ets:lookup(users, User#user.id),
-    send_to_all(userstate(U)),
+    move_to_channel(User,ChannelId),
     move_to_channel(Users,ChannelId);
 move_to_channel(User,ChannelId) ->
     ets:update_element(users, User#user.id, {#user.channel_id,ChannelId}),

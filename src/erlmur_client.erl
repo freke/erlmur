@@ -16,6 +16,7 @@
 	 send_udp/2,
 	 udp_tunnel/1,
 	 update_key_remote/2, 
+	 resync/2,
 	 cryptkey/1,
 	 handle_msg/3,
 	 session_id/1, 
@@ -56,6 +57,9 @@ session_id(Pid) ->
 
 session_id(Pid,Sid) ->
     gen_server:cast(Pid,{sid,Sid}).
+
+resync(Pid,ClientNonce) ->
+    gen_server:cast(Pid,resync).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -160,6 +164,10 @@ handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket}
 
 handle_cast({update_key_remote,{Good,Late,Lost,Resync}}, State = #state{cryptkey=Key}) ->
     NewKey = ocb128crypt:remote(Good,Late,Lost,Resync,Key),
+    {noreply,State#state{cryptkey=NewKey}};
+
+handle_cast({resync,ClientNonce}, State = #state{cryptkey=Key})->
+    NewKey = ocb128crypt:client_nonce(ClientNonce,Key),
     {noreply,State#state{cryptkey=NewKey}};
 
 handle_cast({sid,Sid}, State) ->

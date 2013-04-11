@@ -35,3 +35,6 @@ cleanplt:
 	@echo
 	sleep 5
 	rm $(COMBO_PLT)
+
+xref: compile
+	rebar xref skip_deps=true

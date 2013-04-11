@@ -94,11 +94,19 @@ handle_udp(<<1:3,0:5,_Timestamp/binary>>=PingMsg, {Pid,_Key,_From}) ->
     erlmur_client:send_udp(Pid,PingMsg);
 handle_udp(<<Type:3,Target:5,Rest/binary>>, {Pid,_Key,_From}) ->
     {Counter,R} = erlmur_varint:decode(Rest),
-    {Voice,Positional} = case Type of
-			     4 -> {R,<<>>};
-			     _ -> voice_data(R)
-			 end,
+    {Voice,Positional} = maybe_positional(Type,R),
     erlmur_server:voice_data(Type,Target,Pid,Counter,Voice,Positional).
+
+maybe_positional(4,Data) ->
+    {Data,<<>>};
+maybe_positional(_,Data) ->
+    split_voice_positional(Data).
+
+split_voice_positional(<<1:1,Len:7,V1:Len/binary,Rest/binary>>) ->
+    {V2,R1} = split_voice_positional(Rest),
+    {<<1:1,Len:7,V1:Len/binary,V2/binary>>,R1};
+split_voice_positional(<<0:1,Len:7,V:Len/binary,Rest/binary>>) ->
+    {<<0:1,Len:7,V:Len/binary>>,Rest}.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -120,17 +128,6 @@ channelstate(PropList) ->
 
 channelremove(PropList) ->
     record_info:proplist_to_record(PropList, channelremove, ?MODULE).
-
-%%--------------------------------------------------------------------
-%% @doc
-%% @spec
-%% @end
-%%--------------------------------------------------------------------
-voice_data(<<1:1,Len:7,V1:Len/binary,Rest/binary>>) ->
-    {V2,R1} = voice_data(Rest),
-    {<<1:1,Len:7,V1:Len/binary,V2/binary>>,R1};
-voice_data(<<0:1,Len:7,V:Len/binary,Rest/binary>>) ->
-    {<<0:1,Len:7,V:Len/binary>>,Rest}.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -199,8 +196,7 @@ handle_pb(?MSG_CRYPTSETUP,Msg,{Pid,Key,_From}) ->
 	    erlmur_client:send(Pid,encode_message(?MSG_CRYPTSETUP, CryptSetupMsg));
 	CryptSetup ->
 	    error_logger:info_report([{resync,Pid},{cryptsetup,CryptSetup}]),
-	    NewKey = ocb128crypt:client_nonce(CryptSetup#cryptsetup.client_nonce,Key),
-	    erlmur_client:newkey(Pid,NewKey)
+	    erlmur_client:resync(Pid,CryptSetup#cryptsetup.client_nonce)
     end;
 
 handle_pb(?MSG_UDPTUNNEL, Msg, {Pid,_Key,_From}=Client) ->

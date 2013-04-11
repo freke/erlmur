@@ -182,7 +182,7 @@ handle_call(channelstates,
 handle_call(userstates, 
 	    _From, 
 	    State) ->
-    {reply, erlmur_user:all_user_states(), State};
+    {reply, erlmur_users:all_user_states(), State};
 
 handle_call(codecversion, 
 	    _From, 
@@ -273,7 +273,10 @@ handle_cast({channelstate,ChannelState},State) ->
     {noreply, State};
 
 handle_cast({channel_remove,Channel},State) ->
-    erlmur_channels:remove(erlmur_channels:find_by_id(proplists:get_value(channel_id,erlmur_message:proplist(Channel)))),
+    erlmur_channels:remove(
+      erlmur_channels:find_by_id(
+	proplists:get_value(channel_id,
+			    erlmur_message:proplist(Channel)))),
     {noreply, State};
 
 handle_cast({userstate,UserState}, State) ->
