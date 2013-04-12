@@ -15,10 +15,8 @@
 	 count/0,
 	 all_user_states/0,
 	 list_clients/0,
-	 with_id/1,
-	 find_from_client_pid/1,
-	 find_from_session/1,
-	 find_by_address/1,
+	 find_user/1,
+	 fetch_user/1,
 	 remove/2,
 	 add/3,
 	 update/1,
@@ -99,25 +97,7 @@ list_clients() ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-find_from_client_pid(Pid) ->
-    Match = ets:fun2ms(fun(X = #user{client_pid=C}) when C =:= Pid -> X end),
-    ets:select(users, Match).
-
-%%--------------------------------------------------------------------
-%% @doc
-%% @spec
-%% @end
-%%--------------------------------------------------------------------
-find_from_session(Session) ->
-    Match = ets:fun2ms(fun(X = #user{session=S}) when Session =:= S -> X end),
-    ets:select(users, Match).
-
-%%--------------------------------------------------------------------
-%% @doc
-%% @spec
-%% @end
-%%--------------------------------------------------------------------
-find_by_address(Address) ->
+find_user({address,Address}) ->
     Match = ets:fun2ms(fun(X = #user{address=A}) when Address =:= A -> X end),
     ets:select(users, Match).
 
@@ -126,8 +106,17 @@ find_by_address(Address) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-with_id(Id) ->
-    ets:lookup(users, Id).
+fetch_user({client_pid,Pid}) ->
+    Match = ets:fun2ms(fun(X = #user{client_pid=C}) when C =:= Pid -> X end),
+    [U] = ets:select(users, Match),
+    U;
+fetch_user({session,Session}) ->
+    Match = ets:fun2ms(fun(X = #user{session=S}) when Session =:= S -> X end),
+    [U] = ets:select(users, Match),
+    U;
+fetch_user({id,Id}) ->
+    [U] = ets:lookup(users, Id),
+    U.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -170,7 +159,7 @@ add(Pid,Name,Address) ->
 %% @end
 %%--------------------------------------------------------------------
 update(User) ->
-    U = find_from_session(proplists:get_value(session,User)),
+    U = fetch_user({session,proplists:get_value(session,User)}),
     NewUser = update(User,U),
     send_to_all(userstate(NewUser)),
     NewUser.

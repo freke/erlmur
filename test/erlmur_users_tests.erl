@@ -69,7 +69,7 @@ remove_user(_) ->
 find_user_from_pid(_) ->
     Pid = self(),
     U1 = add_user(Pid,user1,1),
-    [?_assertEqual(U1, erlmur_users:find_from_client_pid(Pid)),
+    [?_assertEqual(U1, erlmur_users:fetch_user({client_pid,Pid})),
      ?_assert(meck:validate(erlmur_client))].
 
 list_users(_) ->
@@ -82,4 +82,4 @@ list_users(_) ->
 %%% HELP FUNCTIONS %%%
 %%%%%%%%%%%%%%%%%%%%%%
 add_user(Pid,User,Address) ->
-    erlmur_users:find_from_session(erlmur_users:add(Pid,User,Address)).
+    erlmur_users:fetch_user({session,erlmur_users:add(Pid,User,Address)}).

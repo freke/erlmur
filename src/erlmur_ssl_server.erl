@@ -37,6 +37,7 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec start_link(integer()) -> ignore | {error,_} | {ok,pid()}.
 start_link(Port) when is_integer(Port) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Port], []).
 
@@ -55,6 +56,7 @@ start_link(Port) when is_integer(Port) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
+-spec init([integer()]) -> {ok,#state{}} | {stop,_}.
 init([Port]) ->
     process_flag(trap_exit, true),
     true = filelib:is_regular(proplists:get_value(certfile,?SSL_OPTIONS)),
@@ -80,6 +82,7 @@ init([Port]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-spec handle_call(_,_,#state{}) -> {reply,ok,#state{}}.
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -94,6 +97,7 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-spec handle_cast(_,#state{}) -> {noreply,#state{}}.
 handle_cast({accepted, _Pid}, State = #state{}) ->
     {noreply, wait_for_new_client(State)};
 handle_cast(_Msg, State) ->

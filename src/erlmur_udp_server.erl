@@ -116,7 +116,7 @@ handle_info({udp, _Socket, IP, PortNo, <<0:32,Timestamp:64>>}, State) ->
 		     MaxBandwidth:32>>),
     {noreply,State};
 handle_info({udp, _Socket, IP, PortNo, EncryptedMsg}, State) ->
-    Users = erlmur_users:find_by_address(IP),
+    Users = erlmur_users:find_user({address,IP}),
     lists:foreach(fun(User) -> 
 			  Pid = erlmur_users:client_pid(User),
 			  erlmur_client:handle_msg(Pid,PortNo,EncryptedMsg)

@@ -59,7 +59,7 @@ session_id(Pid,Sid) ->
     gen_server:cast(Pid,{sid,Sid}).
 
 resync(Pid,ClientNonce) ->
-    gen_server:cast(Pid,resync).
+    gen_server:cast(Pid,{resync,ClientNonce}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -203,7 +203,6 @@ handle_info(timeout,State) ->
 
 handle_info({ssl_closed, _S}, State = #state{sid=Sid}) ->
     error_logger:info_msg("~w Disconnected!~n", [Sid]),
-    erlmur_server:deluser(),
     {stop, normal, State};
 
 handle_info(Msg, State = #state{socket=Socket,cryptkey=Key}) ->

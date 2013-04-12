@@ -24,7 +24,6 @@
 	 serverconfig/0,
 	 serversync/1,
 	 permissionquery/1,
-	 deluser/0,
 	 usercount/0,
 	 voice_data/6]).
 
@@ -107,9 +106,6 @@ serversync(Session) ->
 
 permissionquery(Perm) ->
     gen_server:call(?SERVER,{permissionquery,Perm}).
-
-deluser() ->
-    gen_server:call(?SERVER,deluser).
 
 usercount() ->
     gen_server:call(?SERVER,usercount).
@@ -211,10 +207,6 @@ handle_call({serversync,Session}, {_Pid,_}, State) ->
 handle_call({permissionquery,Perm}, _From, S) ->
     {reply, Perm#permissionquery{permissions=?PERM_ALL}, S};
 
-handle_call(deluser,{Pid,_}, State) ->
-    removeuser(Pid,<<"Disconnected">>),
-    {reply, ok, State};
-
 handle_call(usercount, _From, State) ->
     NumUsers = proplists:get_value(workers,supervisor:count_children(erlmur_client_sup)),
     {reply, {NumUsers,10}, State};
@@ -238,7 +230,7 @@ handle_cast({codecversion,_C}, State) ->
     {noreply, State};
 
 handle_cast({voice_data,Type,16#1F,Pid,Counter,Voice,_Positional},State) ->
-    [User] = erlmur_users:find_from_client_pid(Pid),
+    User = erlmur_users:fetch_user({client_pid,Pid}),
     Sid = erlmur_users:session(User),
     C = erlmur_varint:encode(Counter),
     EncodedSid = erlmur_varint:encode(Sid),
@@ -246,7 +238,7 @@ handle_cast({voice_data,Type,16#1F,Pid,Counter,Voice,_Positional},State) ->
     {noreply, State};
 
 handle_cast({voice_data,Type,16#00,Pid,Counter,Voice,Positional},State) ->
-    [User] = erlmur_users:find_from_client_pid(Pid),
+    User = erlmur_users:fetch_user({client_pid,Pid}),
     Sid = erlmur_users:session(User),
     ChannelId = erlmur_users:channel_id(User),
     Users = lists:filter(fun(U) -> erlmur_users:session(U) =/= Sid end, erlmur_users:in_channel(ChannelId)),
@@ -339,5 +331,5 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 removeuser(Pid,Reason) ->
-    User = erlmur_users:find_from_client_pid(Pid),
+    User = erlmur_users:fetch_user({client_pid,Pid}),
     erlmur_users:remove(User,Reason).
