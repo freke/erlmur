@@ -129,8 +129,9 @@ voice_data(Type,Target,ClientPid,Counter,Voice,Positional) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    Nodes = [node()],
     erlmur_channels:init(),
-    erlmur_users:init(),
+    erlmur_users:init(Nodes),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------

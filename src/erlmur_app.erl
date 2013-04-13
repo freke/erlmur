@@ -20,6 +20,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
+    mnesia:wait_for_tables([users], 5000),
     erlmur_sup:start_link().
 
 stop(_State) ->
