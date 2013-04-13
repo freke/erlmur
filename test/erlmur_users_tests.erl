@@ -42,14 +42,14 @@ stop(_) ->
 %%% ACTUAL TESTS %%%
 %%%%%%%%%%%%%%%%%%%%
 init(_) ->
-    [?_assertEqual(0, erlmur_users:count()),
-     ?_assertEqual([], erlmur_users:in_channel(0))].
+    [?_assertEqual(0, length(erlmur_users:list())),
+     ?_assertEqual([], erlmur_users:find_user({channel_id,0}))].
 
 add_user(_) ->
     erlmur_users:add(self(),user1,1),
-    [?_assertEqual(1, erlmur_users:count()),
-     ?_assertEqual(1, length(erlmur_users:in_channel(0))),
-     ?_assertEqual(0, length(erlmur_users:in_channel(1))),
+    [?_assertEqual(1, length(erlmur_users:list())),
+     ?_assertEqual(1, length(erlmur_users:find_user({channel_id,0}))),
+     ?_assertEqual(0, length(erlmur_users:find_user({channel_id,1}))),
      ?_assert(meck:validate(erlmur_client))].
 
 select_by_id(_) ->
@@ -63,17 +63,17 @@ select_by_id(_) ->
 move_user_to_channel(_) ->
     U = add_user(self(),user1,1),
     erlmur_users:move_to_channel(U,1),
-    [?_assertEqual(1, erlmur_users:count()),
-     ?_assertEqual(0, length(erlmur_users:in_channel(0))),
-     ?_assertEqual(1, length(erlmur_users:in_channel(1))),
+    [?_assertEqual(1, length(erlmur_users:list())),
+     ?_assertEqual(0, length(erlmur_users:find_user({channel_id,0}))),
+     ?_assertEqual(1, length(erlmur_users:find_user({channel_id,1}))),
      ?_assert(meck:validate(erlmur_client))].
 
 remove_user(_) ->
     U1 = add_user(self(),user1,1),
     U2 = add_user(self(),user2,2),
     erlmur_users:remove(U1,"Test"),
-    [?_assertEqual(1, erlmur_users:count()),
-     ?_assertEqual(1, length(erlmur_users:in_channel(0))),
+    [?_assertEqual(1, length(erlmur_users:list())),
+     ?_assertEqual(1, length(erlmur_users:find_user({channel_id,0}))),
      ?_assert(meck:validate(erlmur_client))].
 
 find_user_from_pid(_) ->
@@ -85,11 +85,12 @@ find_user_from_pid(_) ->
 list_users(_) ->
     U1 = add_user(self(),user1,1),
     U2 = add_user(self(),user2,2),
-    [?_assertEqual(2, erlmur_users:count()),
-     ?_assertEqual(2, length(erlmur_users:list()))].
+    [?_assertEqual(2, length(erlmur_users:list()))].
 
 %%%%%%%%%%%%%%%%%%%%%%
 %%% HELP FUNCTIONS %%%
 %%%%%%%%%%%%%%%%%%%%%%
 add_user(Pid,User,Address) ->
-    erlmur_users:fetch_user({session,erlmur_users:add(Pid,User,Address)}).
+    UserId = erlmur_users:add(Pid,User,Address),
+    error_logger:info_report([{userid,UserId}]),
+    erlmur_users:fetch_user({id,UserId}).

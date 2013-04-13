@@ -100,7 +100,8 @@ remove([Channel|Channels]) ->
 
     remove(SubChannels),
 
-    lists:foreach(fun(U) -> erlmur_users:move_to_channel(U,0) end, erlmur_users:in_channel(Channel#channel.channel_id)),
+    lists:foreach(fun(U) -> erlmur_users:move_to_channel(U,Channel#channel.parent) end, 
+		  erlmur_users:find_user({channel_id,Channel#channel.channel_id})),
     ets:delete(channels,Channel#channel.channel_id),
     erlmur_users:send_to_all(channelremove(Channel)),
     error_logger:info_report([{erlmur_channels,remove},{channel,Channel}]),
