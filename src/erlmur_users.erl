@@ -11,6 +11,7 @@
 -export([init/1,
 	 client_pid/1,
 	 session/1,
+	 name/1,
 	 channel_id/1,
 	 count/0,
 	 all_user_states/0,
@@ -30,7 +31,7 @@
 
 -export_record_info([user]).
 
--record(user,{name,id,address,session,channel_id,client_pid}).
+-record(user,{id,name,address,session,channel_id,client_pid}).
 -record(counter_entry, {id, value=0}).
 
 %%--------------------------------------------------------------------
@@ -41,7 +42,7 @@
 init(Nodes) ->
     mnesia:create_table(user,
 			[{attributes, record_info(fields, user)},
-			 {index, [#user.id]},
+			 %{index, [#user.id]},
 			 {ram_copies, Nodes},
 			 {type, set}]),
 
@@ -64,6 +65,14 @@ client_pid(User) ->
 %%--------------------------------------------------------------------
 session(User) ->
     User#user.session.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% @spec
+%% @end
+%%--------------------------------------------------------------------
+name(User) ->
+    User#user.name.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -139,7 +148,7 @@ fetch_user({session,Session}) ->
     U;
 fetch_user({id,Id}) ->
     F = fun() ->
-		mnesa:read(user, Id)
+		mnesia:read(user, Id)
 	end,
     [U] = mnesia:activity(transaction, F),
     U.
@@ -249,9 +258,12 @@ move_to_channel([User|Users],ChannelId) ->
     move_to_channel(User,ChannelId),
     move_to_channel(Users,ChannelId);
 move_to_channel(User,ChannelId) ->
-    [U] = mnesia:read(user, User#user.id),
-    mnesia:write(U#user{channel_id=ChannelId}),
-    send_to_all(userstate(U)).
+    F = fun() ->
+		U = fetch_user({id, User#user.id}),
+		mnesia:write(U#user{channel_id=ChannelId}),
+		send_to_all(userstate(U))
+	end,
+    mnesia:activity(transaction, F).
 
 %%--------------------------------------------------------------------
 %% @doc

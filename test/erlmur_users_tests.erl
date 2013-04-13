@@ -16,6 +16,7 @@
 
 erlmur_user_test_() ->
     [{"Default values then started",?setup(fun  init/1)},
+     {"Select user by id",?setup(fun select_by_id/1)},
      {"Add one user",?setup(fun add_user/1)},
      {"Move user to channel",?setup(fun move_user_to_channel/1)},
      {"Remove user",?setup(fun remove_user/1)},
@@ -28,11 +29,12 @@ erlmur_user_test_() ->
 %%%%%%%%%%%%%%%%%%%%%%%
 start() ->
     meck:new(erlmur_client),
-    erlmur_users:init().
+    application:start(mnesia),
+    erlmur_users:init([node()]).
 
 stop(_) ->
-    ets:delete(users),
     ets:delete(user_counters),
+    application:stop(mnesia),
     meck:unload(erlmur_client).
 
 
@@ -49,6 +51,14 @@ add_user(_) ->
      ?_assertEqual(1, length(erlmur_users:in_channel(0))),
      ?_assertEqual(0, length(erlmur_users:in_channel(1))),
      ?_assert(meck:validate(erlmur_client))].
+
+select_by_id(_) ->
+    U1 = erlmur_users:add(self(),user1,28171),
+    U2 = erlmur_users:add(self(),user2,29287),
+    [?_assertEqual(user1, erlmur_users:name(erlmur_users:fetch_user({id,U1}))),
+     ?_assertEqual(user2, erlmur_users:name(erlmur_users:fetch_user({id,U2}))),
+     ?_assert(meck:validate(erlmur_client))].
+    
 
 move_user_to_channel(_) ->
     U = add_user(self(),user1,1),
