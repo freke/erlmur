@@ -168,7 +168,7 @@ handle_call({authenticate,User,Pass,Address}, {Pid,_}, State) ->
 			      {pass,Pass},
 			      {address,Address}]),
     Session = erlmur_users:add(Pid,User,Address),
-    erlang:monitor(process, Pid),
+    erlmur_monitor_users:monitor_user(Pid),
     {reply, Session, State};
 
 handle_call(channelstates, 
@@ -290,14 +290,6 @@ handle_cast(Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({'DOWN',_Ref,process,Pid,Reason}, State) when is_atom(Reason)->
-    removeuser(Pid,atom_to_binary(Reason,latin1)),
-    {noreply, State};
-
-handle_info({'DOWN',_Ref,process,Pid,Reason}, State) ->
-    removeuser(Pid,list_to_binary(Reason)),
-    {noreply, State};
-
 handle_info(Info, State) ->
     error_logger:info_report([{erlmur_server,handle_info},{"Unhandle info",Info}]),
     {noreply, State}.
@@ -331,6 +323,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-removeuser(Pid,Reason) ->
-    User = erlmur_users:fetch_user({client_pid,Pid}),
-    erlmur_users:remove(User,Reason).

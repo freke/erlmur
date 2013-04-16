@@ -37,7 +37,8 @@ init([Port]) ->
     ErlmurClientSup = ?CHILD(erlmur_client_sup,supervisor,[]),
     ErlmurSsl = ?CHILD(erlmur_ssl_server,worker,[Port]),
     ErlmurUdp = ?CHILD(erlmur_udp_server,worker,[Port]),
+    ErlmurMonitorUsers = ?CHILD(erlmur_monitor_users,worker,[]),
     ErlmurServer = ?CHILD(erlmur_server,worker,[]),
 
-    {ok, { {one_for_one, 5, 10}, [ErlmurClientSup,ErlmurSsl,ErlmurUdp,ErlmurServer]} }.
+    {ok, { {one_for_one, 5, 10}, [ErlmurClientSup,ErlmurSsl,ErlmurUdp,ErlmurMonitorUsers,ErlmurServer]} }.
 
