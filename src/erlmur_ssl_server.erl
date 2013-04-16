@@ -17,12 +17,17 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
+-include_lib("public_key/include/public_key.hrl").
+
 -define(SERVER, ?MODULE). 
 -define(SSL_OPTIONS, [binary,
 		      {active, false}, 
 		      {reuseaddr, true}, 
 		      {certfile, "server.pem"},
-		      {keyfile, "key.pem"}]).
+		      {keyfile, "key.pem"},
+		      {verify, verify_peer},
+		      {verify_fun, {fun verify_peer/3, []}},
+{fail_if_no_peer_cert, true}]).
 
 -record(state, {listener}).
 
@@ -58,7 +63,6 @@ start_link(Port) when is_integer(Port) ->
 %%--------------------------------------------------------------------
 -spec init([integer()]) -> {ok,#state{}} | {stop,_}.
 init([Port]) ->
-    process_flag(trap_exit, true),
     true = filelib:is_regular(proplists:get_value(certfile,?SSL_OPTIONS)),
     case ssl:listen(Port, ?SSL_OPTIONS) of
 	{ok, Listen_socket} ->
@@ -153,3 +157,13 @@ wait_for_new_client(#state{listener = Socket} = State) ->
     gen_server:cast(Pid, {socket, SslSocket}),
     State.
 
+verify_peer(_OtpCert, {bad_cert, selfsigned_peer}, UserState) ->
+    {valid, UserState};
+verify_peer(_OtpCert, {bad_cert, _} = Reason, UserState) ->
+    {fail, Reason};
+verify_peer(_OtpCert, {extension, _}, UserState) ->
+    {unknown, UserState};
+verify_peer(_OtpCert, valid, UserState) ->
+    {valid, UserState};
+verify_peer(_OtpCert, valid_peer, UserState) ->
+    {valid, UserState}.
