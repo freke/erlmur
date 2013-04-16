@@ -27,7 +27,7 @@
 		      {keyfile, "key.pem"},
 		      {verify, verify_peer},
 		      {verify_fun, {fun verify_peer/3, []}},
-{fail_if_no_peer_cert, true}]).
+		      {fail_if_no_peer_cert, true}]).
 
 -record(state, {listener}).
 
