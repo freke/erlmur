@@ -138,7 +138,7 @@ handle_pb(?MSG_VERSION,_Msg,{Pid,_Key,_From}) ->
     R=mumble_pb:encode_version(erlmur_server:version()),
     erlmur_client:send(Pid,encode_message(?MSG_VERSION,R));
 
-handle_pb(?MSG_AUTHENTICATE,Msg,{Pid,Key,{Address,_Port}}) ->
+handle_pb(?MSG_AUTHENTICATE,Msg,{Pid,Key,{Address,_Port, Cert}}) ->
     {_,U,P,_T,C,_O} = mumble_pb:decode_authenticate(Msg),
     Sid=erlmur_server:authenticate(U,P,Address),
     CS = erlmur_channels:all_channel_states(), 
@@ -199,7 +199,7 @@ handle_pb(?MSG_CRYPTSETUP,Msg,{Pid,Key,_From}) ->
 	    erlmur_client:resync(Pid,CryptSetup#cryptsetup.client_nonce)
     end;
 
-handle_pb(?MSG_UDPTUNNEL, Msg, {Pid,_Key,_From}=Client) ->
+handle_pb(?MSG_UDPTUNNEL, Msg, {Pid,_Key,_From,_Cert}=Client) ->
     erlmur_client:udp_tunnel(Pid),
     handle_udp(Msg,Client);
 

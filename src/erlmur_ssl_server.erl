@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1]).
+-export([start_link/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -22,9 +22,7 @@
 -define(SERVER, ?MODULE). 
 -define(SSL_OPTIONS, [binary,
 		      {active, false}, 
-		      {reuseaddr, true}, 
-		      {certfile, "server.pem"},
-		      {keyfile, "key.pem"},
+		      {reuseaddr, true},
 		      {verify, verify_peer},
 		      {verify_fun, {fun verify_peer/3, []}},
 		      {fail_if_no_peer_cert, true}]).
@@ -42,9 +40,9 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
--spec start_link(integer()) -> ignore | {error,_} | {ok,pid()}.
-start_link(Port) when is_integer(Port) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [Port], []).
+-spec start_link(integer(),string(),string()) -> ignore | {error,_} | {ok,pid()}.
+start_link(Port,ServerPem,KeyPem) when is_integer(Port) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [Port,ServerPem,KeyPem], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -61,9 +59,14 @@ start_link(Port) when is_integer(Port) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
--spec init([integer()]) -> {ok,#state{}} | {stop,_}.
-init([Port]) ->
-    true = filelib:is_regular(proplists:get_value(certfile,?SSL_OPTIONS)),
+-spec init([any()]) -> {ok,#state{}} | {stop,_}.
+init([Port,ServerPem,KeyPem]) ->
+    true = filelib:is_regular(
+	     proplists:get_value(
+	       certfile,
+	       [{certfile, ServerPem},
+		{keyfile, KeyPem}
+		|?SSL_OPTIONS])),
     case ssl:listen(Port, ?SSL_OPTIONS) of
 	{ok, Listen_socket} ->
 	    gen_server:cast(self(), {accepted, self()}),

@@ -194,8 +194,7 @@ handle_cast(Msg, State) ->
 handle_info({ssl, From, Msg}, #state{socket=Socket,cryptkey=Key}=State) ->
     {ok, {Address, Port}} = ssl:peername(From),
     {ok,Cert} = ssl:peercert(Socket),
-    error_logger:info_report([{erlmur_client,handle_info},{cert,Cert}]),
-    erlmur_message:handle(Msg, {self(), Key, {Address, Port}}),
+    erlmur_message:handle(Msg, {self(), Key, {Address, Port, Cert}}),
     ssl:setopts(Socket, [{active,once}]),
     {noreply, State, ?MAX_IDLE_MS};
 

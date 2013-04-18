@@ -26,16 +26,19 @@
 %% ===================================================================
 
 start_link() ->
-    ListenPort = application:get_env(application:get_application(), listen_port, ?DEF_PORT),
-    supervisor:start_link({local, ?MODULE}, ?MODULE, [ListenPort]).
+    {ok,App} = application:get_application(),
+    ListenPort = application:get_env(App, listen_port, ?DEF_PORT),
+    ServerPem = application:get_env(App, server_pem, "server.pem"),
+    KeyPem = application:get_env(App, key_pem, "key.pem"),
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [ListenPort,ServerPem,KeyPem]).
 
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
 
-init([Port]) ->
+init([Port,ServerPem,KeyPem]) ->
     ErlmurClientSup = ?CHILD(erlmur_client_sup,supervisor,[]),
-    ErlmurSsl = ?CHILD(erlmur_ssl_server,worker,[Port]),
+    ErlmurSsl = ?CHILD(erlmur_ssl_server,worker,[Port,ServerPem,KeyPem]),
     ErlmurUdp = ?CHILD(erlmur_udp_server,worker,[Port]),
     ErlmurMonitorUsers = ?CHILD(erlmur_monitor_users,worker,[]),
     ErlmurServer = ?CHILD(erlmur_server,worker,[]),

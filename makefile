@@ -3,7 +3,7 @@ compile: get-deps
 
 test: compile
 	rebar eunit skip_deps=true
-	#rebar ct skip_deps=true
+	rebar ct skip_deps=true
 
 get-deps:
 	rebar get-deps
@@ -26,7 +26,7 @@ dialyzer: compile
 	@echo Use "'make build_plt'" to build PLT prior to using this target.
 	@echo
 	@sleep 1
-	dialyzer -Wno_return -Wrace_conditions--plt $(COMBO_PLT) deps/*/ebin | fgrep -v -f ./dialyzer.ignore-warnings
+	dialyzer -Wno_return -Wrace_conditions --plt $(COMBO_PLT) deps/*/ebin | fgrep -v -f ./dialyzer.ignore-warnings
 
 cleanplt:
 	@echo

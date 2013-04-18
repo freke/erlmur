@@ -18,7 +18,8 @@
 %% @end
 %%--------------------------------------------------------------------
 init() ->
-    SoName = case code:priv_dir(?MODULE) of {error, bad_name} ->
+    SoName = case code:priv_dir(erlmur) of 
+		 {error, bad_name} ->
 		     case filelib:is_dir(filename:join(["..", "priv"])) of
 			 true ->
 			     filename:join(["..", "priv", "ocb128crypt_nif"]);
