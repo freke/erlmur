@@ -35,7 +35,7 @@
 %% @end
 %%--------------------------------------------------------------------
 suite() ->
-    [{timetrap,{minutes,10}}].
+    [{timetrap,{minutes,1}}].
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -244,10 +244,11 @@ authenticate_test_case(_Config) ->
     meck:expect(erlmur_client, send, fun(_,_) -> ok end),
     meck:expect(erlmur_client, session_id, fun(_,_) -> ok end),
 
-    Msg = mumble_pb:encode_authenticate(#authenticate{}),
-    BinMsg = encode_message(16#02,Msg),
-    Key = ocb128crypt:new_key(),
-    erlmur_message:handle(BinMsg,{self(),Key,{address,port,cert}}),
+    Pid = spawn(?MODULE, client_loop, [self()]),
+
+    ok = authenticate_client(Pid),
+
+    ok = stop_client(Pid),
 
     meck:unload(erlmur_client),
     ok.
@@ -259,3 +260,32 @@ encode_message(Type, Msg) when is_list(Msg) ->
 encode_message(Type, Msg) when is_binary(Msg) ->
     Len = byte_size(Msg),
     <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer,Msg/binary>>.
+
+client_loop(Parent) ->
+    receive
+	stop ->
+	    Parent ! ok;
+	authenticate ->
+	    Msg = mumble_pb:encode_authenticate(#authenticate{}),
+	    BinMsg = encode_message(16#02,Msg),
+	    Key = ocb128crypt:new_key(),
+	    erlmur_message:handle(BinMsg,{self(),Key,{address,port,cert}}),
+	    Parent ! ok,
+	    client_loop(Parent)
+    end.
+
+stop_client(Pid) ->
+    Pid ! stop,
+    receive
+	ok ->
+	    ok
+    end.
+	
+
+authenticate_client(Pid) ->
+    Pid ! authenticate,
+    receive
+	ok ->
+	    ok
+    end.
+
