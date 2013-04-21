@@ -61,13 +61,13 @@ start_link(Port,ServerPem,KeyPem) when is_integer(Port) ->
 %%--------------------------------------------------------------------
 -spec init([any()]) -> {ok,#state{}} | {stop,_}.
 init([Port,ServerPem,KeyPem]) ->
-    true = filelib:is_regular(
-	     proplists:get_value(
-	       certfile,
-	       [{certfile, ServerPem},
-		{keyfile, KeyPem}
-		|?SSL_OPTIONS])),
-    case ssl:listen(Port, ?SSL_OPTIONS) of
+    error_logger:info_report([{erlmur_ssl_server,init},{server,ServerPem},{key,KeyPem}]),
+    true = filelib:is_regular(KeyPem),
+    true = filelib:is_regular(ServerPem),
+
+    case ssl:listen(Port, [{certfile, ServerPem},
+			   {keyfile, KeyPem}
+			   |?SSL_OPTIONS ]) of
 	{ok, Listen_socket} ->
 	    gen_server:cast(self(), {accepted, self()}),
 	    {ok, #state{listener = Listen_socket}};
@@ -162,7 +162,7 @@ wait_for_new_client(#state{listener = Socket} = State) ->
 
 verify_peer(_OtpCert, {bad_cert, selfsigned_peer}, UserState) ->
     {valid, UserState};
-verify_peer(_OtpCert, {bad_cert, _} = Reason, UserState) ->
+verify_peer(_OtpCert, {bad_cert, _} = Reason, _UserState) ->
     {fail, Reason};
 verify_peer(_OtpCert, {extension, _}, UserState) ->
     {unknown, UserState};
