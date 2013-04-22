@@ -9,8 +9,11 @@
 -module(erlmur_channels).
 
 -export([init/0,
+	 name/1,
+	 id/1,
 	 all_channel_states/0,
-	 find_by_id/1, 
+	 find_by_id/1,
+	 find_by_name/1,
 	 list/0,
 	 add/1,
 	 update/1,
@@ -34,6 +37,12 @@ init() ->
     ets:new(channel_counters, [set, {keypos, #counter_entry.id}, named_table, public]),
     ets:insert(channel_counters, #counter_entry{id=channelid, value=0}).
 
+name(Channel) ->
+    Channel#channel.name.
+
+id(Channel) ->
+    Channel#channel.channel_id.
+
 %%--------------------------------------------------------------------
 %% @doc
 %% @spec
@@ -41,6 +50,10 @@ init() ->
 %%--------------------------------------------------------------------
 find_by_id(ChannelId) ->
     Match = ets:fun2ms(fun(X = #channel{channel_id=Id}) when Id =:= ChannelId -> X end),
+    ets:select(channels, Match).
+
+find_by_name(Name) ->
+    Match = ets:fun2ms(fun(X = #channel{name=N}) when N =:= Name -> X end),
     ets:select(channels, Match).
 
 %%--------------------------------------------------------------------
@@ -62,7 +75,7 @@ add(Channel) ->
     NewChannel = C#channel{channel_id=ChannelId},
     ets:insert(channels,NewChannel),
     erlmur_users:send_to_all(channelstate(NewChannel)),
-    error_logger:info_report([{erlmur_channels,add},{channel,NewChannel}]),
+    error_logger:info_report([{erlmur_channels,add},{new_channel,NewChannel}]),
     NewChannel.
 
 %%--------------------------------------------------------------------

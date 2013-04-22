@@ -137,6 +137,9 @@ end_per_group(_GroupName, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 init_per_testcase(_TestCase, Config) ->
+    meck:new(erlmur_client),
+    meck:expect(erlmur_client, send, fun(_,_) -> ok end),
+    meck:expect(erlmur_client, session_id, fun(_,_) -> ok end),
     Config.
 
 %%--------------------------------------------------------------------
@@ -153,6 +156,7 @@ init_per_testcase(_TestCase, Config) ->
 %% @end
 %%--------------------------------------------------------------------
 end_per_testcase(_TestCase, _Config) ->
+    meck:unload(erlmur_client),
     ok.
 
 %%--------------------------------------------------------------------
@@ -198,7 +202,7 @@ groups() ->
 %% @end
 %%--------------------------------------------------------------------
 all() -> 
-    [authenticate_test_case].
+    [authenticate_test_case,move_to_channel_test_case].
 
 
 %%--------------------------------------------------------------------
@@ -222,6 +226,9 @@ all() ->
 authenticate_test_case() -> 
     [].
 
+move_to_channel_test_case() ->
+    [].
+
 %%--------------------------------------------------------------------
 %% @doc Test case function. (The name of it must be specified in
 %%              the all/0 list or in a test case group for the test case
@@ -240,20 +247,25 @@ authenticate_test_case() ->
 %% @end
 %%--------------------------------------------------------------------
 authenticate_test_case(_Config) -> 
-    meck:new(erlmur_client),
-    meck:expect(erlmur_client, send, fun(_,_) -> ok end),
-    meck:expect(erlmur_client, session_id, fun(_,_) -> ok end),
-
     Pid = spawn(?MODULE, client_loop, [self()]),
 
-    ok = authenticate_client(Pid),
+    {ok,User} = authenticate_client(Pid,"user1"),
+    ok = check_authenticate_client(Pid),
 
     ok = stop_client(Pid),
-
-    meck:unload(erlmur_client),
     ok.
 
+move_to_channel_test_case(_Config) ->
+    Pid = spawn(?MODULE, client_loop, [self()]),
 
+    {ok,User} = authenticate_client(Pid,"user1"),
+    ChanelId = create_channel("Channel 1"),
+    ok = move_to_channel(Pid,ChanelId),
+    ok.
+
+%%--------------------------------------------------------------------
+%% Help functions
+%%--------------------------------------------------------------------
 encode_message(Type, Msg) when is_list(Msg) ->
     encode_message(Type, erlang:iolist_to_binary(Msg));
 
@@ -261,16 +273,19 @@ encode_message(Type, Msg) when is_binary(Msg) ->
     Len = byte_size(Msg),
     <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer,Msg/binary>>.
 
+send_msg(Type,Msg) ->
+    BinMsg = encode_message(Type,Msg),
+    Key = ocb128crypt:new_key(),
+    erlmur_message:handle(BinMsg,{self(),Key,{address,port,cert}}).
+
 client_loop(Parent) ->
     receive
 	stop ->
 	    Parent ! ok;
-	authenticate ->
-	    Msg = mumble_pb:encode_authenticate(#authenticate{}),
-	    BinMsg = encode_message(16#02,Msg),
-	    Key = ocb128crypt:new_key(),
-	    erlmur_message:handle(BinMsg,{self(),Key,{address,port,cert}}),
-	    Parent ! ok,
+	{authenticate,Name} ->
+	    Msg = mumble_pb:encode_authenticate(#authenticate{username=Name}),
+	    send_msg(16#02,Msg),
+	    Parent ! {authenticate,self(),ok},
 	    client_loop(Parent)
     end.
 
@@ -282,10 +297,41 @@ stop_client(Pid) ->
     end.
 	
 
-authenticate_client(Pid) ->
-    Pid ! authenticate,
+authenticate_client(Pid,Name) ->
+    Pid ! {authenticate,Name},
+    {ok,get_user(Name)}.
+
+get_user(Name) ->
+    case erlmur_users:find_user({name,Name}) of
+    	[U] ->
+    	    U;
+    	[] ->
+    	    ok = timer:sleep(100),
+    	    get_user(Name)
+    end.
+
+check_authenticate_client(Pid) ->
     receive
-	ok ->
+	{authenticate,Pid,ok} ->
 	    ok
     end.
 
+create_channel(Name) ->
+    Msg = mumble_pb:encode_channelstate(#channelstate{name=Name}),
+    send_msg(16#07,Msg),
+    erlmur_channels:id(get_channel(Name)).
+
+get_channel(Name) ->
+    case erlmur_channels:find_by_name(Name) of
+    	[C] ->
+    	    C;
+    	[] ->
+    	    ok = timer:sleep(100),
+    	    get_channel(Name)
+    end.
+    
+move_to_channel(Pid,ChanelId) ->
+    ok.
+
+check_user_in_channel(Pid,ChannelId) ->
+    ok.

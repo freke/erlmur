@@ -258,6 +258,7 @@ handle_cast({voice_data,Type,16#00,Pid,Counter,Voice,Positional},State) ->
     {noreply, State};
 
 handle_cast({channelstate,ChannelState},State) ->
+    error_logger:info_report([{erlmur_server,handle_cast},{channelstate,ChannelState}]),
     PropList = erlmur_message:proplist(ChannelState),
     case proplists:get_value(channel_id,PropList) of
 	undefined -> erlmur_channels:add(PropList);
