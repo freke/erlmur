@@ -18,9 +18,7 @@
 	 update_key_remote/2, 
 	 resync/2,
 	 cryptkey/1,
-	 handle_msg/3,
-	 session_id/1, 
-	 session_id/2]).
+	 handle_msg/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -29,7 +27,7 @@
 -define(SERVER, ?MODULE). 
 -define(MAX_IDLE_MS,30000).
 
--record(state, {socket,cryptkey,udp_port,sid,use_udp_tunnel=true}).
+-record(state, {socket,cryptkey,udp_port,use_udp_tunnel=true}).
 
 %%%===================================================================
 %%% API
@@ -51,12 +49,6 @@ update_key_remote(Pid,Remote) ->
 
 handle_msg(Pid,PortNo,Msg) ->
     gen_server:cast(Pid,{handle_msg,PortNo,Msg}).
-
-session_id(Pid) ->
-    gen_server:call(Pid,sid).
-
-session_id(Pid,Sid) ->
-    gen_server:cast(Pid,{sid,Sid}).
 
 resync(Pid,ClientNonce) ->
     gen_server:cast(Pid,{resync,ClientNonce}).
@@ -106,8 +98,6 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call(cryptkey, _From, State=#state{cryptkey=Key}) ->
     {reply, ocb128crypt:key(Key), State};
-handle_call(sid, _From, State=#state{sid=Sid}) ->
-    {reply, Sid, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -154,12 +144,12 @@ handle_cast({send_udp,Data},State=#state{socket=Socket,cryptkey=Key,use_udp_tunn
 handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket} = State) ->
     {ok, {Address, Port}} = ssl:peername(Socket),
     NewState = case ocb128crypt:decrypt(Key, EncryptedMsg) of
-		 {Msg,NewKey} ->
-		     erlmur_message:handle_udp(Msg, {self(), NewKey, {Address, Port}}),
-		     State#state{cryptkey=NewKey, udp_port=PortNo, use_udp_tunnel=false};
-		 error ->
-		     State
-	     end,
+		   {Msg,NewKey} ->
+		       erlmur_message:handle_udp(Msg, {self(), NewKey, {Address, Port}}),
+		       State#state{cryptkey=NewKey, udp_port=PortNo, use_udp_tunnel=false};
+		   error ->
+		       State
+	       end,
     {noreply,NewState};
 
 handle_cast({update_key_remote,{Good,Late,Lost,Resync}}, State = #state{cryptkey=Key}) ->
@@ -169,10 +159,6 @@ handle_cast({update_key_remote,{Good,Late,Lost,Resync}}, State = #state{cryptkey
 handle_cast({resync,ClientNonce}, State = #state{cryptkey=Key})->
     NewKey = ocb128crypt:client_nonce(ClientNonce,Key),
     {noreply,State#state{cryptkey=NewKey}};
-
-handle_cast({sid,Sid}, State) ->
-    error_logger:info_msg("New user ~w~n",[Sid]),
-    {noreply,State#state{sid=Sid}};
 
 handle_cast(use_udp_tunnel, State) ->
     {noreply,State#state{use_udp_tunnel=true}};
@@ -202,8 +188,8 @@ handle_info(timeout,State) ->
     error_logger:info_msg("Timeout! ~p seconds idle~n", ?MAX_IDLE_MS/1000),
     {stop, normal, State};
 
-handle_info({ssl_closed, _S}, State = #state{sid=Sid}) ->
-    error_logger:info_msg("~w Disconnected!~n", [Sid]),
+handle_info({ssl_closed, _S}, State) ->
+    error_logger:info_msg("Disconnected!~n"),
     {stop, normal, State};
 
 handle_info(Msg, State = #state{socket=Socket,cryptkey=Key}) ->

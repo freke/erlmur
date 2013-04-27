@@ -9,6 +9,7 @@
 -module(erlmur_users).
 
 -export([init/1,
+	 id/1,
 	 client_pid/1,
 	 session/1,
 	 name/1,
@@ -48,6 +49,9 @@ init(Nodes) ->
     ets:insert(user_counters, #counter_entry{id=userid, value=0}),
     ets:insert(user_counters, #counter_entry{id=sessionid, value=0}),
     ok = mnesia:wait_for_tables([user],5000).
+
+id(User) ->
+    User#user.id.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -217,10 +221,13 @@ update([],User) ->
 update([{_,undefined}|R], User) ->
     update(R,User);
 update([{channel_id,NewChannel}|R], User) ->
+    error_logger:info_report([{erlmur_users,update},{channel_id,NewChannel}]),
     update(R,User#user{channel_id=NewChannel});
 update([{client_pid,NewClient}|R], User) ->
+    error_logger:info_report([{erlmur_users,update},{client_pid,NewClient}]),
     update(R,User#user{client_pid=NewClient});
 update([{name,NewName}|R], User) ->
+    error_logger:info_report([{erlmur_users,update},{name,NewName}]),
     update(R,User#user{name=NewName});
 update([V|R],User) ->
     error_logger:info_report([{erlmur_users,update},{not_updating,V}]),

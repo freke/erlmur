@@ -138,8 +138,6 @@ end_per_group(_GroupName, _Config) ->
 %%--------------------------------------------------------------------
 init_per_testcase(_TestCase, Config) ->
     meck:new(erlmur_client),
-    meck:expect(erlmur_client, send, fun(_,_) -> ok end),
-    meck:expect(erlmur_client, session_id, fun(_,_) -> ok end),
     Config.
 
 %%--------------------------------------------------------------------
@@ -202,7 +200,7 @@ groups() ->
 %% @end
 %%--------------------------------------------------------------------
 all() -> 
-    [authenticate_test_case,move_to_channel_test_case].
+    [authenticate_test_case,move_to_channel_test_case,voice_test_case].
 
 
 %%--------------------------------------------------------------------
@@ -229,6 +227,9 @@ authenticate_test_case() ->
 move_to_channel_test_case() ->
     [].
 
+voice_test_case() ->
+    [].
+
 %%--------------------------------------------------------------------
 %% @doc Test case function. (The name of it must be specified in
 %%              the all/0 list or in a test case group for the test case
@@ -247,21 +248,58 @@ move_to_channel_test_case() ->
 %% @end
 %%--------------------------------------------------------------------
 authenticate_test_case(_Config) -> 
-    Pid = spawn(?MODULE, client_loop, [self()]),
-
-    {ok,User} = authenticate_client(Pid,"user1"),
+    Pid = spawn_link(?MODULE, client_loop, [self()]),
+    {ok,User} = authenticate_client(Pid,"user"),
     ok = check_authenticate_client(Pid),
-
     ok = stop_client(Pid),
-    ok.
+    true = meck:validate(erlmur_client).
 
 move_to_channel_test_case(_Config) ->
-    Pid = spawn(?MODULE, client_loop, [self()]),
-
+    Pid = spawn_link(?MODULE, client_loop, [self()]),
     {ok,User} = authenticate_client(Pid,"user1"),
-    ChanelId = create_channel("Channel 1"),
-    ok = move_to_channel(Pid,ChanelId),
-    ok.
+
+    {ok,Channel} = create_channel(Pid,"Channel 1"),
+    ok = move_to_channel(Pid,User,Channel),
+    true = check_user_in_channel(User,Channel),
+    ok = stop_client(Pid),
+    true = meck:validate(erlmur_client).
+
+voice_test_case(_Config) ->
+    Pid1 = spawn_link(?MODULE, client_loop, [self()]),
+    Pid2 = spawn_link(?MODULE, client_loop, [self()]),
+    Pid3 = spawn_link(?MODULE, client_loop, [self()]),
+
+    Address = address,
+    Port = 123,
+
+    {ok,User1} = authenticate_client(Pid1,"user1"),
+    {ok,User2} = authenticate_client(Pid2,"user2"),
+    {ok,User3} = authenticate_client(Pid3,"user3"),
+
+    {ok,Channel} = create_channel(Pid3,"Channel 1"),
+
+    ok = move_to_channel(Pid3,User3,Channel),
+
+    Pid = self(),
+    Type = 0,
+    Target = 0,
+    VoiceData = crypto:rand_bytes(16),
+    Voice = <<0,84,178,223,247,218,21,152,157,133,210,99,32,119,236,248,92,66,214,42,
+	      171,163,21,27,146,189,15,119,5,128,159,150,25,240,156,194,50,128,15,121,
+	      21,178,147,133,162,155,146,85,84,164,169,39,16,50,223,247,218,21,152,157, 
+	      133,210,99,32,119,236,248,92,66,214,42,171,163,21,27,146,189,15,119,5,128,
+	      159,150,25,240,156,194,50,128,15,121,21,178,147,133,162,155,146,85,84,164,
+	      169,39,16>>,
+    meck:expect(erlmur_client,send_udp, 
+		fun(P,_) when P =:= Pid2 -> ok;
+		   (_,_) -> erlang:error(should_not_recive_voice)
+		end),
+    speak(Pid1,Voice),
+    timer:sleep(500),
+    ok = stop_client(Pid1),
+    ok = stop_client(Pid2),
+    ok = stop_client(Pid3),
+    true = meck:validate(erlmur_client).
 
 %%--------------------------------------------------------------------
 %% Help functions
@@ -283,9 +321,32 @@ client_loop(Parent) ->
 	stop ->
 	    Parent ! ok;
 	{authenticate,Name} ->
+	    Pid = self(),
+	    meck:expect(erlmur_client, send, fun(Pid,_) -> ok end),
 	    Msg = mumble_pb:encode_authenticate(#authenticate{username=Name}),
 	    send_msg(16#02,Msg),
-	    Parent ! {authenticate,self(),ok},
+	    Parent ! {authenticate,Pid,ok},
+	    client_loop(Parent);
+	{new_channel,Name} ->
+	    Msg = mumble_pb:encode_channelstate(#channelstate{name=Name}),
+	    send_msg(16#07,Msg),
+	    Parent ! {new_channel,self(),ok},
+	    client_loop(Parent);
+	{move_user_to_channel,User,Channel} ->
+	    SessionId = erlmur_users:session(User),
+	    ChannelId = erlmur_channels:id(Channel),
+	    Msg = mumble_pb:encode_userstate(#userstate{session=SessionId,channel_id=ChannelId}),
+	    send_msg(16#09,Msg),
+	    Parent ! {moved_user,self(),ok},
+	    client_loop(Parent);
+	{speak, Msg} ->
+	    erlmur_message:handle_udp(Msg, {self(), key, {address, port}}),
+	    client_loop(Parent);
+	Unhandled ->
+	    error_logger:info_report([{client_loop,unhandled_msg},
+				      {self,self()},
+				      {parent,Parent},
+				      {msg,Unhandled}]),
 	    client_loop(Parent)
     end.
 
@@ -294,12 +355,22 @@ stop_client(Pid) ->
     receive
 	ok ->
 	    ok
-    end.
-	
+    end.	
 
 authenticate_client(Pid,Name) ->
     Pid ! {authenticate,Name},
     {ok,get_user(Name)}.
+
+create_channel(Pid,Name) ->
+    Pid ! {new_channel,Name},
+    {ok,get_channel(Name)}.
+
+move_to_channel(Pid,User,Channel) ->
+    Pid ! {move_user_to_channel,User,Channel},
+    ok.
+
+speak(Pid, Data) ->
+    Pid ! {speak, Data}.
 
 get_user(Name) ->
     case erlmur_users:find_user({name,Name}) of
@@ -316,11 +387,6 @@ check_authenticate_client(Pid) ->
 	    ok
     end.
 
-create_channel(Name) ->
-    Msg = mumble_pb:encode_channelstate(#channelstate{name=Name}),
-    send_msg(16#07,Msg),
-    erlmur_channels:id(get_channel(Name)).
-
 get_channel(Name) ->
     case erlmur_channels:find_by_name(Name) of
     	[C] ->
@@ -329,9 +395,15 @@ get_channel(Name) ->
     	    ok = timer:sleep(100),
     	    get_channel(Name)
     end.
-    
-move_to_channel(Pid,ChanelId) ->
-    ok.
 
-check_user_in_channel(Pid,ChannelId) ->
-    ok.
+check_user_in_channel(User,Channel) ->
+    ChannelId = erlmur_channels:id(Channel),
+    case erlmur_users:find_user({channel_id,ChannelId}) of
+	[] ->
+	    ok = timer:sleep(100),
+	    check_user_in_channel(User,Channel);
+	Users ->
+	    error_logger:info_report([{erlmur_SUIT,check_user_in_channel},{users,Users},{user,User}]),
+	    lists:any(fun(U) -> erlmur_users:id(U) =:= erlmur_users:id(User) end, Users)
+    end.
+    

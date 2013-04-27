@@ -245,6 +245,7 @@ handle_cast({voice_data,Type,16#00,Pid,Counter,Voice,Positional},State) ->
     Users = lists:filter(fun(U) -> erlmur_users:session(U) =/= Sid end, erlmur_users:find_user({channel_id,ChannelId})),
     C = erlmur_varint:encode(Counter),
     EncodedSid = erlmur_varint:encode(Sid),
+    error_logger:info_report([{erlmur_server,voice_data},{users,Users}]),
     lists:foreach(fun(U) ->
 			  P = erlmur_users:client_pid(U),
 			  erlmur_client:send_udp(P,

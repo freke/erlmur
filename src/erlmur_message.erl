@@ -166,7 +166,6 @@ handle_pb(?MSG_AUTHENTICATE,Msg,{Pid,Key,{Address,_Port, Cert}}) ->
     erlmur_client:send(Pid,encode_message(?MSG_SERVERCONFIG,Config)),
     
     R=mumble_pb:encode_serversync(erlmur_server:serversync(Sid)),
-    erlmur_client:session_id(Pid,Sid),
     erlmur_client:send(Pid,encode_message(?MSG_SERVERSYNC,R));
 
 handle_pb(?MSG_PERMISSIONQUERY,Msg,{Pid,_Key,_From}) ->
