@@ -211,6 +211,9 @@ handle_pb(?MSG_CHANNELREMOVE, Msg, _Client) ->
 handle_pb(?MSG_USERSTATE, Msg, _Client) ->
     erlmur_server:userstate(mumble_pb:decode_userstate(Msg));
 
+handle_pb(?MSG_USERREMOVE, Msg, _Client) ->
+    erlmur_server:userremove(mumble_pb:decode_userremove(Msg));
+
 handle_pb(Type,Msg,Client) ->
     error_logger:error_report([{erlmur_message,"Unhandled message"},
 			       {type, Type},

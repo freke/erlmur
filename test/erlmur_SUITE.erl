@@ -248,10 +248,22 @@ voice_test_case() ->
 %% @end
 %%--------------------------------------------------------------------
 authenticate_test_case(_Config) -> 
-    Pid = spawn_link(?MODULE, client_loop, [self()]),
-    {ok,User} = authenticate_client(Pid,"user"),
-    ok = check_authenticate_client(Pid),
-    ok = stop_client(Pid),
+    Pid1 = spawn_link(?MODULE, client_loop, [self()]),
+    {ok,User1} = authenticate_client(Pid1,"user1"),
+    Pid2 = spawn_link(?MODULE, client_loop, [self()]),
+    {ok,User2} = authenticate_client(Pid2,"user2"),
+
+    meck:expect(erlmur_client, stop, fun(Pid) ->
+					     error_logger:info_report([{erlmur_SUITE,authenticate_test_case},
+								       {stop,Pid}]),
+					     Pid ! stop end),
+
+    ok = kick_user(Pid1,User2,"test"),
+    receive
+	{ok,stop} -> ok
+    end,
+    ok = stop_client(Pid1),
+
     true = meck:validate(erlmur_client).
 
 move_to_channel_test_case(_Config) ->
@@ -319,25 +331,30 @@ send_msg(Type,Msg) ->
 client_loop(Parent) ->
     receive
 	stop ->
-	    Parent ! ok;
+	    error_logger:info_report([{erlmur_SUITE,client_loop},{stop,self()},{parent,Parent}]),
+	    Parent ! {ok,stop};
 	{authenticate,Name} ->
 	    Pid = self(),
 	    meck:expect(erlmur_client, send, fun(Pid,_) -> ok end),
 	    Msg = mumble_pb:encode_authenticate(#authenticate{username=Name}),
 	    send_msg(16#02,Msg),
-	    Parent ! {authenticate,Pid,ok},
+	    client_loop(Parent);
+	{kick_user,User,Reason} ->
+	    SessionId = erlmur_users:session(User),
+	    Msg = mumble_pb:encode_userremove(#userremove{session=SessionId,
+							  reason=Reason,
+							  ban = false}),
+	    send_msg(16#08,Msg),
 	    client_loop(Parent);
 	{new_channel,Name} ->
 	    Msg = mumble_pb:encode_channelstate(#channelstate{name=Name}),
 	    send_msg(16#07,Msg),
-	    Parent ! {new_channel,self(),ok},
 	    client_loop(Parent);
 	{move_user_to_channel,User,Channel} ->
 	    SessionId = erlmur_users:session(User),
 	    ChannelId = erlmur_channels:id(Channel),
 	    Msg = mumble_pb:encode_userstate(#userstate{session=SessionId,channel_id=ChannelId}),
 	    send_msg(16#09,Msg),
-	    Parent ! {moved_user,self(),ok},
 	    client_loop(Parent);
 	{speak, Msg} ->
 	    erlmur_message:handle_udp(Msg, {self(), key, {address, port}}),
@@ -353,13 +370,19 @@ client_loop(Parent) ->
 stop_client(Pid) ->
     Pid ! stop,
     receive
-	ok ->
+	{ok,stop} ->
 	    ok
     end.	
 
 authenticate_client(Pid,Name) ->
     Pid ! {authenticate,Name},
     {ok,get_user(Name)}.
+
+kick_user(Pid,User,Reason) ->
+    Pid ! {kick_user,User,Reason},
+    Name = erlmur_users:name(User),
+    user_removed(Name),
+    ok.
 
 create_channel(Pid,Name) ->
     Pid ! {new_channel,Name},
@@ -381,10 +404,14 @@ get_user(Name) ->
     	    get_user(Name)
     end.
 
-check_authenticate_client(Pid) ->
-    receive
-	{authenticate,Pid,ok} ->
-	    ok
+user_removed(Name) ->
+    case erlmur_users:find_user({name,Name}) of
+    	[U] ->
+	    ok = timer:sleep(100),
+    	    user_removed(Name),
+    	    U;
+    	[] ->
+    	    ok
     end.
 
 get_channel(Name) ->

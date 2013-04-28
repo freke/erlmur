@@ -19,6 +19,7 @@
 	 channel_remove/1,
 	 userstates/0,
 	 userstate/1,
+	 userremove/1,
 	 codecversion/0,
 	 codecversion/1,
 	 serverconfig/0,
@@ -91,6 +92,9 @@ userstates() ->
 
 userstate(UserState) ->
     gen_server:cast(?SERVER,{userstate,UserState}).
+
+userremove(UserRemove) ->
+    gen_server:cast(?SERVER,{userremove,UserRemove}).
 
 codecversion() ->
     gen_server:call(?SERVER,codecversion).
@@ -276,6 +280,12 @@ handle_cast({channel_remove,Channel},State) ->
 
 handle_cast({userstate,UserState}, State) ->
     erlmur_users:update(erlmur_message:proplist(UserState)),
+    {noreply, State};
+
+handle_cast({userremove,UserRemove}, State) ->
+    error_logger:info_report([{erlmur_server,handle_cast},{userremove,UserRemove}]),
+    User = erlmur_users:fetch_user({session,proplists:get_value(session,erlmur_message:proplist(UserRemove))}),
+    erlmur_client:stop(erlmur_users:client_pid(User)),
     {noreply, State};
 
 handle_cast(Msg, State) ->

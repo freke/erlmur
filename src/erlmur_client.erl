@@ -18,7 +18,8 @@
 	 update_key_remote/2, 
 	 resync/2,
 	 cryptkey/1,
-	 handle_msg/3]).
+	 handle_msg/3,
+	 stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -52,6 +53,9 @@ handle_msg(Pid,PortNo,Msg) ->
 
 resync(Pid,ClientNonce) ->
     gen_server:cast(Pid,{resync,ClientNonce}).
+
+stop(Pid) ->
+    gen_server:cast(Pid,stop).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -162,6 +166,9 @@ handle_cast({resync,ClientNonce}, State = #state{cryptkey=Key})->
 
 handle_cast(use_udp_tunnel, State) ->
     {noreply,State#state{use_udp_tunnel=true}};
+
+handle_cast(stop,State) ->
+    {stop, normal, State};
 
 handle_cast(Msg, State) ->
     error_logger:info_report([{?MODULE,"Unhandled message"},{msg,Msg}]),

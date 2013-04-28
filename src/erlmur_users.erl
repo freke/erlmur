@@ -165,9 +165,9 @@ fetch_user({id,Id}) ->
 %%--------------------------------------------------------------------
 remove([], _Reason) ->
     ok;
-remove([User|User], Reason) ->
+remove([User|Users], Reason) ->
     remove(User,Reason),
-    remove(User,Reason);
+    remove(Users,Reason);
 remove(User, Reason) ->
     F = fun() ->
 		mnesia:delete({user,User#user.id})
