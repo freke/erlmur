@@ -108,6 +108,7 @@ update([_|Rest],C) ->
 remove([]) ->
     ok;
 remove([Channel|Channels]) ->
+    error_logger:info_report([{erlmur_channels,remove},{channel,Channel}]),
     Match = ets:fun2ms(fun(X = #channel{parent=Id}) when Id =:= Channel#channel.channel_id -> X end),
     SubChannels = ets:select(channels, Match),
 
@@ -117,7 +118,6 @@ remove([Channel|Channels]) ->
 		  erlmur_users:find_user({channel_id,Channel#channel.channel_id})),
     ets:delete(channels,Channel#channel.channel_id),
     erlmur_users:send_to_all(channelremove(Channel)),
-    error_logger:info_report([{erlmur_channels,remove},{channel,Channel}]),
     remove(Channels).
 
 %%--------------------------------------------------------------------
@@ -132,7 +132,7 @@ all_channel_states() ->
 %% Internal
 %%--------------------------------------------------------------------
 channelstate(Channel) ->
-    erlmur_message:channelstate(record_info:record_to_proplist(Channel, ?MODULE)).
+    {channelstate, record_info:record_to_proplist(Channel, ?MODULE)}.
 
 channelremove(Channel) ->
-    erlmur_message:channelremove(record_info:record_to_proplist(Channel, ?MODULE)).
+    {channelremove, record_info:record_to_proplist(Channel, ?MODULE)}.

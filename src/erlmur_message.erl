@@ -9,12 +9,24 @@
 
 -export([handle/2,handle_udp/2]).
 
--export([userremove/1,userstate/1,channelstate/1,channelremove/1,proplist/1]).
+-export([pack/1,data_msg/1,control_msg/1,unpack/2,version/1,userremove/1,userstate/1,channelstate/1,channelremove/1,proplist/1]).
 
 -include("mumble_pb.hrl").
 -include_lib("record_info/include/record_info.hrl").
 
--export_record_info([userstate,userremove,channelstate,channelremove]).
+-export_record_info([authenticate,
+		     ping,
+		     cryptsetup,
+		     serversync,
+		     version,
+		     userstate,
+		     userremove,
+		     codecversion,
+		     serverconfig,
+		     channelstate,
+		     permissionquery,
+		     channelstate,
+		     channelremove]).
 
 -define(MSG_VERSION, 16#00).
 -define(MSG_UDPTUNNEL, 16#01).
@@ -43,6 +55,141 @@
 -define(MSG_SERVERCONFIG, 16#18).
 -define(MSG_SUGGESTCONFIG, 16#19).
 
+pack({ping,PropList}) ->
+    V = ping(PropList),
+    R=mumble_pb:encode_ping(V),
+    encode_message(?MSG_PING,R);
+pack({version,PropList}) ->
+    V = version(PropList),
+    R=mumble_pb:encode_version(V),
+    encode_message(?MSG_VERSION,R);
+pack({userstate,PropList}) ->
+    US = userstate(PropList),
+    R=mumble_pb:encode_userstate(US),
+    encode_message(?MSG_USERSTATE,R);
+pack({channelstate,PropList}) ->
+    CS = channelstate(PropList),
+    R=mumble_pb:encode_channelstate(CS),
+    encode_message(?MSG_CHANNELSTATE,R);
+pack({channelremove,PropList}) ->
+    CR = channelremove(PropList),
+    R=mumble_pb:encode_channelremove(CR),
+    encode_message(?MSG_CHANNELREMOVE,R);
+pack({userremove,PropList}) ->
+    UR = userremove(PropList),
+    R=mumble_pb:encode_userremove(UR),
+    encode_message(?MSG_USERREMOVE,R);
+pack({cryptsetup,PropList}) ->
+    CS = cryptsetup(PropList),
+    R=mumble_pb:encode_cryptsetup(CS),
+    encode_message(?MSG_CRYPTSETUP,R);
+pack({codecversion,PropList}) ->
+    CV = codecversion(PropList),
+    R=mumble_pb:encode_codecversion(CV),
+    encode_message(?MSG_CODECVERSION,R);
+pack({serverconfig,PropList}) ->
+    SC = serverconfig(PropList),
+    R=mumble_pb:encode_serverconfig(SC),
+    encode_message(?MSG_SERVERCONFIG,R);
+pack({serversync,PropList}) ->
+    SS = serversync(PropList),
+    R=mumble_pb:encode_serversync(SS),
+    encode_message(?MSG_SERVERSYNC,R);
+pack({permissionquery,PropList}) ->
+    PQ = permissionquery(PropList),
+    R=mumble_pb:encode_permissionquery(PQ),
+    encode_message(?MSG_PERMISSIONQUERY,R);
+pack({udp_tunnel,{_,Data}}) ->
+    encode_message(?MSG_UDPTUNNEL,Data).
+    
+
+data_msg(<<1:3,0:5,_Timestamp/binary>> = PingMsg) ->
+    PingMsg;
+data_msg(<<Type:3,Target:5,Rest/binary>>) ->
+    {Counter,R} = erlmur_varint:decode(Rest),
+    {Voice,Positional} = split_voice_positional(Type,R),
+    {voice_data,Type,Target,Counter,Voice,Positional}.
+
+control_msg(<<>>) ->
+    [];
+control_msg(<<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer, Msg:Len/binary, Rest/binary>>) ->
+    [{Type,Msg}|control_msg(Rest)].
+
+unpack(?MSG_VERSION,Msg) ->
+    {version,proplist(mumble_pb:decode_version(Msg))};
+unpack(?MSG_AUTHENTICATE,Msg) ->
+    {authenticate,proplist(mumble_pb:decode_authenticate(Msg))};
+unpack(?MSG_PERMISSIONQUERY,Msg) ->
+    {permissionquery,proplist(mumble_pb:decode_permissionquery(Msg))};
+unpack(?MSG_PING,Msg) ->
+    {ping,proplist(mumble_pb:decode_ping(Msg))};
+unpack(?MSG_CRYPTSETUP,Msg) ->
+    {cryptsetup,proplist(mumble_pb:decode_cryptsetup(Msg))};
+unpack(?MSG_UDPTUNNEL, Msg) ->
+    {udptunnel,Msg};
+unpack(?MSG_CHANNELSTATE, Msg) ->
+    {channelstate,proplist(mumble_pb:decode_channelstate(Msg))};
+unpack(?MSG_CHANNELREMOVE, Msg) ->
+    {channelremove,proplist(mumble_pb:decode_channelremove(Msg))};
+unpack(?MSG_USERSTATE, Msg) ->
+    {userstate,proplist(mumble_pb:decode_userstate(Msg))};
+unpack(?MSG_USERREMOVE, Msg) ->
+    {userremove,proplist(mumble_pb:decode_userremove(Msg))}.
+
+proplist(Record) ->
+    record_info:record_to_proplist(Record, ?MODULE).
+
+ping(PropList) ->
+    record_info:proplist_to_record(PropList, ping, ?MODULE).
+
+version(PropList) ->
+    record_info:proplist_to_record(PropList, version, ?MODULE).
+
+userstate(PropList) ->
+    record_info:proplist_to_record(PropList, userstate, ?MODULE).
+
+userremove(PropList) ->
+    record_info:proplist_to_record(PropList, userremove, ?MODULE).
+
+channelstate(PropList) ->
+    record_info:proplist_to_record(PropList, channelstate, ?MODULE).
+
+channelremove(PropList) ->
+    record_info:proplist_to_record(PropList, channelremove, ?MODULE).
+
+cryptsetup(PropList) ->
+    record_info:proplist_to_record(PropList, cryptsetup, ?MODULE).
+
+codecversion(PropList) ->
+    record_info:proplist_to_record(PropList, codecversion, ?MODULE).
+
+serverconfig(PropList) ->
+    record_info:proplist_to_record(PropList, serverconfig, ?MODULE).
+
+serversync(PropList) ->
+    record_info:proplist_to_record(PropList, serversync, ?MODULE).
+
+permissionquery(PropList) ->
+    record_info:proplist_to_record(PropList, permissionquery, ?MODULE).
+
+encode_message(Type, Msg) when is_list(Msg) ->
+    encode_message(Type, erlang:iolist_to_binary(Msg));
+encode_message(Type, Msg) when is_binary(Msg) ->
+    Len = byte_size(Msg),
+    <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer,Msg/binary>>.
+
+split_voice_positional(4,Data) ->
+    {Data,<<>>};
+split_voice_positional(_,Data) ->
+    split_voice_positional(Data).
+
+split_voice_positional(<<1:1,Len:7,V1:Len/binary,Rest/binary>>) ->
+    {V2,R1} = split_voice_positional(Rest),
+    {<<1:1,Len:7,V1:Len/binary,V2/binary>>,R1};
+split_voice_positional(<<0:1,Len:7,V:Len/binary,Rest/binary>>) ->
+    {<<0:1,Len:7,V:Len/binary>>,Rest}.
+
+
 %%--------------------------------------------------------------------
 %% @doc
 %% @spec
@@ -59,6 +206,8 @@ handle(<<>>,_Client) ->
 handle(Msg,Client) when is_tuple(Msg) ->
     MsgType = element(1,Msg),
     send(MsgType,Msg,Client).
+
+
 
 
 %%--------------------------------------------------------------------
@@ -94,40 +243,17 @@ handle_udp(<<1:3,0:5,_Timestamp/binary>>=PingMsg, {Pid,_Key,_From}) ->
     erlmur_client:send_udp(Pid,PingMsg);
 handle_udp(<<Type:3,Target:5,Rest/binary>>, {Pid,_Key,_From}) ->
     {Counter,R} = erlmur_varint:decode(Rest),
-    {Voice,Positional} = maybe_positional(Type,R),
+    {Voice,Positional} = split_voice_positional(Type,R),
     erlmur_server:voice_data(Type,Target,Pid,Counter,Voice,Positional).
 
-maybe_positional(4,Data) ->
-    {Data,<<>>};
-maybe_positional(_,Data) ->
-    split_voice_positional(Data).
 
-split_voice_positional(<<1:1,Len:7,V1:Len/binary,Rest/binary>>) ->
-    {V2,R1} = split_voice_positional(Rest),
-    {<<1:1,Len:7,V1:Len/binary,V2/binary>>,R1};
-split_voice_positional(<<0:1,Len:7,V:Len/binary,Rest/binary>>) ->
-    {<<0:1,Len:7,V:Len/binary>>,Rest}.
 
 %%--------------------------------------------------------------------
 %% @doc
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-proplist(Record) ->
-    record_info:record_to_proplist(Record, ?MODULE).
 
-userstate(PropList) ->
-    record_info:proplist_to_record(PropList, userstate, ?MODULE).
-
-
-userremove(PropList) ->
-    record_info:proplist_to_record(PropList, userremove, ?MODULE).
-
-channelstate(PropList) ->
-    record_info:proplist_to_record(PropList, channelstate, ?MODULE).
-
-channelremove(PropList) ->
-    record_info:proplist_to_record(PropList, channelremove, ?MODULE).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -225,9 +351,3 @@ handle_pb(Type,Msg,Client) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-encode_message(Type, Msg) when is_list(Msg) ->
-    encode_message(Type, erlang:iolist_to_binary(Msg));
-
-encode_message(Type, Msg) when is_binary(Msg) ->
-    Len = byte_size(Msg),
-    <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer,Msg/binary>>.

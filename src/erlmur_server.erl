@@ -16,7 +16,7 @@
 	 authenticate/3,
 	 channelstates/0,
 	 channelstate/1,
-	 channel_remove/1,
+	 channelremove/1,
 	 userstates/0,
 	 userstate/1,
 	 userremove/1,
@@ -84,8 +84,8 @@ channelstates() ->
 channelstate(ChannelState) ->
     gen_server:cast(?SERVER,{channelstate,ChannelState}).
 
-channel_remove(Channel) ->
-    gen_server:cast(?SERVER,{channel_remove,Channel}).
+channelremove(Channel) ->
+    gen_server:cast(?SERVER,{channelremove,Channel}).
 
 userstates() ->
     gen_server:call(?SERVER,userstates).
@@ -161,10 +161,10 @@ handle_call(version, _From, State) ->
 		    V -> V
 		end,
     <<ErlmurVersion:4>> = <<0:2,0:1,1:1>>,
-    {reply, #version{version = ErlmurVersion, 
-		     release = <<"erlmur">>, 
-		     os = list_to_binary(OsNameString),
-		     os_version = list_to_binary(OsVersion)}, State};
+    {reply, [{version, ErlmurVersion}, 
+	     {release, <<"erlmur">>}, 
+	     {os, list_to_binary(OsNameString)},
+	     {os_version, list_to_binary(OsVersion)}], State};
 
 handle_call({authenticate,User,Pass,Address}, {Pid,_}, State) ->
     error_logger:info_report([{erlmur_server,handle_call},
@@ -189,28 +189,29 @@ handle_call(codecversion,
 	    _From, 
 	    S) ->
     {reply, 
-     #codecversion{alpha=-2147483637, 
-		   beta=0, 
-		   prefer_alpha=true, 
-		   opus=false}, 
+     [{alpha, -2147483637}, 
+      {beta, 0}, 
+      {prefer_alpha, true}, 
+      {opus, false}], 
      S};
 
 handle_call(serverconfig, _From, State) ->
     {reply, 
-     #serverconfig{max_bandwidth=240000,
-		   allow_html=true,
-		   message_length=128}, 
+     [{max_bandwidth, 240000},
+      {allow_html, true},
+      {message_length, 128}], 
      State};
 
 handle_call({serversync,Session}, {_Pid,_}, State) ->
     {reply, 
-     #serversync{session = Session,
-		 max_bandwidth = 240000,
-		 welcome_text = <<"Welcome to Erlmur.">>}, 
+     [{session, Session},
+      {max_bandwidth, 240000},
+      {welcome_text, <<"Welcome to Erlmur.">>}], 
      State};
 
 handle_call({permissionquery,Perm}, _From, S) ->
-    {reply, Perm#permissionquery{permissions=?PERM_ALL}, S};
+    NewPerm = lists:keyreplace(permissions, 1, Perm, {permissions,?PERM_ALL}),
+    {reply, NewPerm, S};
 
 handle_call(usercount, _From, State) ->
     NumUsers = proplists:get_value(workers,supervisor:count_children(erlmur_client_sup)),
@@ -262,24 +263,22 @@ handle_cast({voice_data,Type,16#00,Pid,Counter,Voice,Positional},State) ->
 		  end, Users),
     {noreply, State};
 
-handle_cast({channelstate,ChannelState},State) ->
-    error_logger:info_report([{erlmur_server,handle_cast},{channelstate,ChannelState}]),
-    PropList = erlmur_message:proplist(ChannelState),
+handle_cast({channelstate,PropList},State) ->
+    error_logger:info_report([{erlmur_server,handle_cast},{channelstate,PropList}]),
     case proplists:get_value(channel_id,PropList) of
 	undefined -> erlmur_channels:add(PropList);
 	_ -> erlmur_channels:update(PropList)
     end,
     {noreply, State};
 
-handle_cast({channel_remove,Channel},State) ->
+handle_cast({channelremove,Channel},State) ->
     erlmur_channels:remove(
       erlmur_channels:find_by_id(
-	proplists:get_value(channel_id,
-			    erlmur_message:proplist(Channel)))),
+	proplists:get_value(channel_id,Channel))),
     {noreply, State};
 
 handle_cast({userstate,UserState}, State) ->
-    erlmur_users:update(erlmur_message:proplist(UserState)),
+    erlmur_users:update(UserState),
     {noreply, State};
 
 handle_cast({userremove,UserRemove}, State) ->

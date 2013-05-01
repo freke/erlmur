@@ -103,8 +103,14 @@ handle_cast(_Msg, State) ->
 handle_info({'DOWN',_Ref,process,Pid,Reason}, State) when is_atom(Reason)->
     removeuser(Pid,atom_to_binary(Reason,latin1)),
     {noreply, State};
-handle_info({'DOWN',_Ref,process,Pid,Reason}, State) ->
+handle_info({'DOWN',_Ref,process,Pid,Reason}, State) when is_list(Reason)->
     removeuser(Pid,list_to_binary(Reason)),
+    {noreply, State};
+handle_info({'DOWN',_Ref,process,Pid,Reason}, State) when is_binary(Reason)->
+    removeuser(Pid,Reason),
+    {noreply, State};
+handle_info({'DOWN',_Ref,process,Pid,_Reason}, State) ->
+    removeuser(Pid,"Unkown"),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.

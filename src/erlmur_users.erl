@@ -221,16 +221,16 @@ update([],User) ->
 update([{_,undefined}|R], User) ->
     update(R,User);
 update([{channel_id,NewChannel}|R], User) ->
-    error_logger:info_report([{erlmur_users,update},{channel_id,NewChannel}]),
+    %error_logger:info_report([{erlmur_users,update},{channel_id,NewChannel}]),
     update(R,User#user{channel_id=NewChannel});
 update([{client_pid,NewClient}|R], User) ->
-    error_logger:info_report([{erlmur_users,update},{client_pid,NewClient}]),
+    %error_logger:info_report([{erlmur_users,update},{client_pid,NewClient}]),
     update(R,User#user{client_pid=NewClient});
 update([{name,NewName}|R], User) ->
-    error_logger:info_report([{erlmur_users,update},{name,NewName}]),
+    %error_logger:info_report([{erlmur_users,update},{name,NewName}]),
     update(R,User#user{name=NewName});
 update([V|R],User) ->
-    error_logger:info_report([{erlmur_users,update},{not_updating,V}]),
+    %error_logger:info_report([{erlmur_users,update},{not_updating,V}]),
     update(R,User).
 
 %%--------------------------------------------------------------------
@@ -283,7 +283,7 @@ send_to_all(Msg) ->
 %% Internal
 %%--------------------------------------------------------------------
 userstate(User) ->
-    erlmur_message:userstate(record_info:record_to_proplist(User, ?MODULE)).
+    {userstate,record_info:record_to_proplist(User, ?MODULE)}.
 
 userremove(User,Reason) ->
-    erlmur_message:userremove([{reason,Reason}|record_info:record_to_proplist(User, ?MODULE)]).
+    {userremove,[{reason,Reason}|record_info:record_to_proplist(User, ?MODULE)]}.
