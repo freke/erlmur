@@ -55,6 +55,10 @@
 -define(MSG_SERVERCONFIG, 16#18).
 -define(MSG_SUGGESTCONFIG, 16#19).
 
+pack({authenticate,PropList}) ->
+    A = authenticate(PropList),
+    R=mumble_pb:encode_authenticate(A),
+    encode_message(?MSG_AUTHENTICATE,R);
 pack({ping,PropList}) ->
     V = ping(PropList),
     R=mumble_pb:encode_ping(V),
@@ -138,6 +142,9 @@ unpack(?MSG_USERREMOVE, Msg) ->
 
 proplist(Record) ->
     record_info:record_to_proplist(Record, ?MODULE).
+
+authenticate(PropList) ->
+    record_info:proplist_to_record(PropList, authenticate, ?MODULE).
 
 ping(PropList) ->
     record_info:proplist_to_record(PropList, ping, ?MODULE).

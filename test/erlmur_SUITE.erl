@@ -63,7 +63,6 @@ init_per_suite(Config) ->
     ok = application:start(public_key),
     ok = application:start(ssl),
     ok = application:start(mnesia),
-    ok = application:start(erlmur),
     Config.
 
 %%--------------------------------------------------------------------
@@ -77,7 +76,6 @@ init_per_suite(Config) ->
 %% @end
 %%--------------------------------------------------------------------
 end_per_suite(_Config) ->
-    application:stop(erlmur),
     application:stop(mnesia),
     application:stop(ssl),
     application:stop(public_key),
@@ -137,7 +135,6 @@ end_per_group(_GroupName, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 init_per_testcase(_TestCase, Config) ->
-    meck:new(erlmur_client),
     Config.
 
 %%--------------------------------------------------------------------
@@ -154,7 +151,6 @@ init_per_testcase(_TestCase, Config) ->
 %% @end
 %%--------------------------------------------------------------------
 end_per_testcase(_TestCase, _Config) ->
-    meck:unload(erlmur_client),
     ok.
 
 %%--------------------------------------------------------------------
@@ -247,24 +243,26 @@ voice_test_case() ->
 %%           {save_config,Config1} | {skip_and_save,Reason,Config1}
 %% @end
 %%--------------------------------------------------------------------
-authenticate_test_case(_Config) -> 
-    Pid1 = spawn_link(?MODULE, client_loop, [self()]),
-    {ok,User1} = authenticate_client(Pid1,"user1"),
-    Pid2 = spawn_link(?MODULE, client_loop, [self()]),
-    {ok,User2} = authenticate_client(Pid2,"user2"),
+authenticate_test_case(_Config) ->
+    meck:new(ssl),
 
-    meck:expect(erlmur_client, stop, fun(Pid) ->
-					     error_logger:info_report([{erlmur_SUITE,authenticate_test_case},
-								       {stop,Pid}]),
-					     Pid ! stop end),
+    start_erlmur(),
+    Pid = start_erlmur_client(),
+    
+    Msg = erlmur_message:pack({authenticate,[{username,"User"},
+					     {password,""},
+					     {tokens,""},
+					     {celt_versions,[]},
+					     {opus,false}]}),
+    Pid ! {ssl, self(), Msg},
 
-    ok = kick_user(Pid1,User2,"test"),
-    receive
-	{ok,stop} -> ok
-    end,
-    ok = stop_client(Pid1),
+    get_user("User"),
 
-    true = meck:validate(erlmur_client).
+    true = meck:validate(ssl),
+
+    stop_erlmur_client(Pid),
+    stop_erlmur(),
+    meck:unload(ssl).
 
 move_to_channel_test_case(_Config) ->
     Pid = spawn_link(?MODULE, client_loop, [self()]),
@@ -316,6 +314,34 @@ voice_test_case(_Config) ->
 %%--------------------------------------------------------------------
 %% Help functions
 %%--------------------------------------------------------------------
+start_erlmur() ->
+    %% Setup ssl
+    meck:expect(ssl, listen, fun(Port, Options) -> meck:passthrough([Port, Options]) end),
+    meck:expect(ssl, transport_accept, fun(ListenSocket) -> meck:passthrough([ListenSocket]) end),
+    meck:expect(ssl, close, fun(_Socket) -> ok end),
+
+    %% ssl mesage
+    meck:expect(ssl, peername, fun(ssl_socket) -> {ok,{address, port}} end),
+    meck:expect(ssl,send, fun(ssl_socket,_Msg) -> ok end ),
+
+    ok = application:start(erlmur).
+
+stop_erlmur() ->
+    application:stop(erlmur).
+    
+start_erlmur_client() ->
+    %% Start erlmur_client
+    meck:expect(ssl, controlling_process, fun(ssl_socket,_Pid) -> ok end),
+    meck:expect(ssl, ssl_accept, fun(ssl_socket) -> ok end),
+    meck:expect(ssl, setopts, fun(ssl_socket, _Options) -> ok end),
+
+    {ok, Child} = supervisor:start_child(erlmur_client_sup, []),
+    gen_server:cast(Child, {socket, ssl_socket}),
+    Child.
+
+stop_erlmur_client(Child) ->
+    supervisor:terminate_child(erlmur_client_sup, Child).
+
 encode_message(Type, Msg) when is_list(Msg) ->
     encode_message(Type, erlang:iolist_to_binary(Msg));
 
