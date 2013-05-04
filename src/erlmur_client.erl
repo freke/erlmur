@@ -131,7 +131,7 @@ handle_cast({send_udp,Data},State=#state{socket=Socket,udp_port=Port,cryptkey=Ke
     {noreply, State#state{cryptkey=NewKey}};
 
 handle_cast({send_udp,Data},State=#state{socket=Socket,use_udp_tunnel=true}) ->
-    ssl:send(Socket,erlmur_message:pack_pb({udp_tunnle,Data})),
+    ssl:send(Socket,erlmur_message:pack({udp_tunnel,Data})),
     {noreply, State};
 
 handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket} = State) ->
@@ -142,6 +142,7 @@ handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket}
 		       NewS = handle_udp_msg(erlmur_message:data_msg(Msg),S),
 		       NewS#state{use_udp_tunnel=false};
 		   error ->
+		       error_logger:info_report([{erlmur_client,handle_cast},{handle_msg,"Error decrypting message"}]),
 		       S
 	       end,
     {noreply,NewState};

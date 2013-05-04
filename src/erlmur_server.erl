@@ -278,6 +278,7 @@ handle_cast({channelremove,Channel},State) ->
     {noreply, State};
 
 handle_cast({userstate,UserState}, State) ->
+    error_logger:info_report([{erlmur_server,handle_cast},{userstate,UserState}]),
     erlmur_users:update(UserState),
     {noreply, State};
 

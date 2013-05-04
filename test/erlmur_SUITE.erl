@@ -135,6 +135,8 @@ end_per_group(_GroupName, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 init_per_testcase(_TestCase, Config) ->
+    meck:new(ssl),
+    start_erlmur(),
     Config.
 
 %%--------------------------------------------------------------------
@@ -151,6 +153,8 @@ init_per_testcase(_TestCase, Config) ->
 %% @end
 %%--------------------------------------------------------------------
 end_per_testcase(_TestCase, _Config) ->
+    stop_erlmur(),
+    meck:unload(ssl),
     ok.
 
 %%--------------------------------------------------------------------
@@ -196,7 +200,7 @@ groups() ->
 %% @end
 %%--------------------------------------------------------------------
 all() -> 
-    [authenticate_test_case,move_to_channel_test_case,voice_test_case].
+    [authenticate_test_case,move_to_channel_test_case,voice_udp_tunnel_test_case].
 
 
 %%--------------------------------------------------------------------
@@ -223,7 +227,7 @@ authenticate_test_case() ->
 move_to_channel_test_case() ->
     [].
 
-voice_test_case() ->
+voice_udp_tunnel_test_case() ->
     [].
 
 %%--------------------------------------------------------------------
@@ -244,99 +248,132 @@ voice_test_case() ->
 %% @end
 %%--------------------------------------------------------------------
 authenticate_test_case(_Config) ->
-    meck:new(ssl),
+    Pid = start_erlmur_client(1),
 
-    start_erlmur(),
-    Pid = start_erlmur_client(),
-    
-    Msg = erlmur_message:pack({authenticate,[{username,"User"},
-					     {password,""},
-					     {tokens,""},
-					     {celt_versions,[]},
-					     {opus,false}]}),
-    Pid ! {ssl, self(), Msg},
-
+    authenticate("User",Pid),
     get_user("User"),
 
     true = meck:validate(ssl),
 
-    stop_erlmur_client(Pid),
-    stop_erlmur(),
-    meck:unload(ssl).
+    stop_erlmur_client(Pid).
 
 move_to_channel_test_case(_Config) ->
-    Pid = spawn_link(?MODULE, client_loop, [self()]),
-    {ok,User} = authenticate_client(Pid,"user1"),
+    Pid = start_erlmur_client(1),
 
-    {ok,Channel} = create_channel(Pid,"Channel 1"),
-    ok = move_to_channel(Pid,User,Channel),
+    meck:expect(ssl,send, fun(ssl_socket_1,_Msg) -> ok end ),
+
+    authenticate("User",Pid),
+    User = get_user("User"),
+
+    channel("Channel 1",Pid),
+    Channel = get_channel("Channel 1"),
+
+    move_to_channel(User,Channel,Pid),
+    
+
     true = check_user_in_channel(User,Channel),
-    ok = stop_client(Pid),
-    true = meck:validate(erlmur_client).
+    true = meck:validate(ssl),
 
-voice_test_case(_Config) ->
-    Pid1 = spawn_link(?MODULE, client_loop, [self()]),
-    Pid2 = spawn_link(?MODULE, client_loop, [self()]),
-    Pid3 = spawn_link(?MODULE, client_loop, [self()]),
+    stop_erlmur_client(Pid).
 
-    Address = address,
-    Port = 123,
+voice_udp_tunnel_test_case(_Config) ->
+    Pid1 = start_erlmur_client(1),
+    Pid2 = start_erlmur_client(2),
+    Pid3 = start_erlmur_client(3),
 
-    {ok,User1} = authenticate_client(Pid1,"user1"),
-    {ok,User2} = authenticate_client(Pid2,"user2"),
-    {ok,User3} = authenticate_client(Pid3,"user3"),
+    authenticate("user1",Pid1),
+    authenticate("user2",Pid2),
+    authenticate("user3",Pid3),
 
-    {ok,Channel} = create_channel(Pid3,"Channel 1"),
+    channel("Channel 1",Pid3),
+    
+    User3 = get_user("user3"),
+    Channel = get_channel("Channel 1"),
+    move_to_channel(User3,Channel,Pid3),
 
-    ok = move_to_channel(Pid3,User3,Channel),
+    true = check_user_in_channel(User3,Channel),
 
-    Pid = self(),
-    Type = 0,
-    Target = 0,
-    VoiceData = crypto:rand_bytes(16),
     Voice = <<0,84,178,223,247,218,21,152,157,133,210,99,32,119,236,248,92,66,214,42,
 	      171,163,21,27,146,189,15,119,5,128,159,150,25,240,156,194,50,128,15,121,
 	      21,178,147,133,162,155,146,85,84,164,169,39,16,50,223,247,218,21,152,157, 
 	      133,210,99,32,119,236,248,92,66,214,42,171,163,21,27,146,189,15,119,5,128,
 	      159,150,25,240,156,194,50,128,15,121,21,178,147,133,162,155,146,85,84,164,
 	      169,39,16>>,
-    meck:expect(erlmur_client,send_udp, 
-		fun(P,_) when P =:= Pid2 -> ok;
-		   (_,_) -> erlang:error(should_not_recive_voice)
-		end),
-    speak(Pid1,Voice),
+
+   ExpectedVoice =  <<0,1,0,0,0,105,0,1,84,178,223,247,218,21,152,157,133,210,99,32,119,
+		      236,248,92,66,214,42,171,163,21,27,146,189,15,119,5,128,159,150,25,
+		      240,156,194,50,128,15,121,21,178,147,133,162,155,146,85,84,164,169,
+		      39,16,50,223,247,218,21,152,157,133,210,99,32,119,236,248,92,66,214,
+		      42,171,163,21,27,146,189,15,119,5,128,159,150,25,240,156,194,50,128,
+		      15,121,21,178,147,133,162,155,146,85,84,164,169,39,16>>,
+
+    {Key,C,S} = erlmur_client:cryptkey(Pid1),
+    {EVoice,_} = ocb128crypt:encrypt({Key,S,C,<<16#FF>>,{0,0,0,0},{0,0,0,0}}, Voice),
+    
+    meck:expect(ssl, send, fun(ssl_socket_2,ExpectedVoice) -> ok;
+			      (_,_) -> erlang:error(unexpected_message) end ),
+
+    erlmur_client:handle_msg(Pid1,port,EVoice),
     timer:sleep(500),
-    ok = stop_client(Pid1),
-    ok = stop_client(Pid2),
-    ok = stop_client(Pid3),
-    true = meck:validate(erlmur_client).
+    true = meck:validate(ssl),    
+
+    stop_erlmur_client(Pid1),
+    stop_erlmur_client(Pid2),
+    stop_erlmur_client(Pid3).
+
+voice_test_case(_Config) ->
+    meck:new(erlmur_udp_server),
+    meck:expect(erlmur_udp_server,send,fun(Address,Port,Data) -> ok end),
+    meck:expect(erlmur_udp_server,terminate,fun(_,_) -> ok end),
+    true = meck:validate(erlmur_udp_server),
+    ok.
 
 %%--------------------------------------------------------------------
 %% Help functions
 %%--------------------------------------------------------------------
+authenticate(UserName,Pid) ->
+    AuthMsg = erlmur_message:pack({authenticate,[{username,UserName},
+						 {password,""},
+						 {tokens,""},
+						 {celt_versions,[]},
+						 {opus,false}]}),
+    Pid ! {ssl, self(), AuthMsg}.
+
+channel(ChannelName,Pid) ->
+    ChanMsg = erlmur_message:pack({channelstate,[{name,ChannelName}]}),
+    Pid ! {ssl, self(), ChanMsg}.
+
+move_to_channel(User,Channel,Pid) ->
+    UserMsg = erlmur_message:pack({userstate,[{session,erlmur_users:session(User)},
+					      {user_id,erlmur_users:id(User)},
+					      {channel_id,erlmur_channels:id(Channel)}]}),
+    Pid ! {ssl, self(), UserMsg}.
+
+
+
 start_erlmur() ->
     %% Setup ssl
     meck:expect(ssl, listen, fun(Port, Options) -> meck:passthrough([Port, Options]) end),
     meck:expect(ssl, transport_accept, fun(ListenSocket) -> meck:passthrough([ListenSocket]) end),
     meck:expect(ssl, close, fun(_Socket) -> ok end),
 
-    %% ssl mesage
-    meck:expect(ssl, peername, fun(ssl_socket) -> {ok,{address, port}} end),
-    meck:expect(ssl,send, fun(ssl_socket,_Msg) -> ok end ),
-
     ok = application:start(erlmur).
 
 stop_erlmur() ->
     application:stop(erlmur).
     
-start_erlmur_client() ->
+start_erlmur_client(Id) ->
+    Socket = list_to_atom(lists:flatten(io_lib:format("ssl_socket_~p",[Id]))),
     %% Start erlmur_client
-    meck:expect(ssl, controlling_process, fun(ssl_socket,_Pid) -> ok end),
-    meck:expect(ssl, ssl_accept, fun(ssl_socket) -> ok end),
-    meck:expect(ssl, setopts, fun(ssl_socket, _Options) -> ok end),
+    meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
+    meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
+    meck:expect(ssl, setopts, fun(_Socket, _Options) -> ok end),
+
+    meck:expect(ssl, send, fun(_Socket,_Msg) -> ok end ),
+    meck:expect(ssl, peername, fun(Socket) -> {ok,{address, port}} end),
 
     {ok, Child} = supervisor:start_child(erlmur_client_sup, []),
-    gen_server:cast(Child, {socket, ssl_socket}),
+    gen_server:cast(Child, {socket, Socket}),
     Child.
 
 stop_erlmur_client(Child) ->
@@ -348,78 +385,6 @@ encode_message(Type, Msg) when is_list(Msg) ->
 encode_message(Type, Msg) when is_binary(Msg) ->
     Len = byte_size(Msg),
     <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer,Msg/binary>>.
-
-send_msg(Type,Msg) ->
-    BinMsg = encode_message(Type,Msg),
-    Key = ocb128crypt:new_key(),
-    erlmur_message:handle(BinMsg,{self(),Key,{address,port,cert}}).
-
-client_loop(Parent) ->
-    receive
-	stop ->
-	    error_logger:info_report([{erlmur_SUITE,client_loop},{stop,self()},{parent,Parent}]),
-	    Parent ! {ok,stop};
-	{authenticate,Name} ->
-	    Pid = self(),
-	    meck:expect(erlmur_client, send, fun(Pid,_) -> ok end),
-	    Msg = mumble_pb:encode_authenticate(#authenticate{username=Name}),
-	    send_msg(16#02,Msg),
-	    client_loop(Parent);
-	{kick_user,User,Reason} ->
-	    SessionId = erlmur_users:session(User),
-	    Msg = mumble_pb:encode_userremove(#userremove{session=SessionId,
-							  reason=Reason,
-							  ban = false}),
-	    send_msg(16#08,Msg),
-	    client_loop(Parent);
-	{new_channel,Name} ->
-	    Msg = mumble_pb:encode_channelstate(#channelstate{name=Name}),
-	    send_msg(16#07,Msg),
-	    client_loop(Parent);
-	{move_user_to_channel,User,Channel} ->
-	    SessionId = erlmur_users:session(User),
-	    ChannelId = erlmur_channels:id(Channel),
-	    Msg = mumble_pb:encode_userstate(#userstate{session=SessionId,channel_id=ChannelId}),
-	    send_msg(16#09,Msg),
-	    client_loop(Parent);
-	{speak, Msg} ->
-	    erlmur_message:handle_udp(Msg, {self(), key, {address, port}}),
-	    client_loop(Parent);
-	Unhandled ->
-	    error_logger:info_report([{client_loop,unhandled_msg},
-				      {self,self()},
-				      {parent,Parent},
-				      {msg,Unhandled}]),
-	    client_loop(Parent)
-    end.
-
-stop_client(Pid) ->
-    Pid ! stop,
-    receive
-	{ok,stop} ->
-	    ok
-    end.	
-
-authenticate_client(Pid,Name) ->
-    Pid ! {authenticate,Name},
-    {ok,get_user(Name)}.
-
-kick_user(Pid,User,Reason) ->
-    Pid ! {kick_user,User,Reason},
-    Name = erlmur_users:name(User),
-    user_removed(Name),
-    ok.
-
-create_channel(Pid,Name) ->
-    Pid ! {new_channel,Name},
-    {ok,get_channel(Name)}.
-
-move_to_channel(Pid,User,Channel) ->
-    Pid ! {move_user_to_channel,User,Channel},
-    ok.
-
-speak(Pid, Data) ->
-    Pid ! {speak, Data}.
 
 get_user(Name) ->
     case erlmur_users:find_user({name,Name}) of
@@ -459,4 +424,4 @@ check_user_in_channel(User,Channel) ->
 	    error_logger:info_report([{erlmur_SUIT,check_user_in_channel},{users,Users},{user,User}]),
 	    lists:any(fun(U) -> erlmur_users:id(U) =:= erlmur_users:id(User) end, Users)
     end.
-    
+

@@ -103,7 +103,7 @@ pack({permissionquery,PropList}) ->
     PQ = permissionquery(PropList),
     R=mumble_pb:encode_permissionquery(PQ),
     encode_message(?MSG_PERMISSIONQUERY,R);
-pack({udp_tunnel,{_,Data}}) ->
+pack({udp_tunnel,Data}) ->
     encode_message(?MSG_UDPTUNNEL,Data).
     
 
