@@ -252,11 +252,7 @@ voice_udp_test_case() ->
 %%--------------------------------------------------------------------
 authenticate_test_case(_Config) ->
     %% Start erlmur_client
-    meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
-    meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
-    meck:expect(ssl, setopts, fun(_Socket, _Options) -> ok end),
-
-    meck:expect(ssl, send, fun(_Socket,_Msg) -> ok end ),
+    meck_ssl(),
     meck:expect(ssl, peername, fun(socket_1) -> {ok,{address_1, port_1}} end),
 
     Pid = start_erlmur_client(socket_1),
@@ -270,11 +266,7 @@ authenticate_test_case(_Config) ->
 
 move_to_channel_test_case(_Config) ->
     %% Start erlmur_client
-    meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
-    meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
-    meck:expect(ssl, setopts, fun(_Socket, _Options) -> ok end),
-
-    meck:expect(ssl, send, fun(socket_1,_Msg) -> ok end ),
+    meck_ssl(),
     meck:expect(ssl, peername, fun(socket_1) -> {ok,{address_1, port_1}} end),
 
     Pid = start_erlmur_client(socket_1),
@@ -294,12 +286,7 @@ move_to_channel_test_case(_Config) ->
     stop_erlmur_client(Pid).
 
 voice_udp_tunnel_test_case(_Config) ->
-    %% Start erlmur_client
-    meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
-    meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
-    meck:expect(ssl, setopts, fun(_Socket, _Options) -> ok end),
-
-    meck:expect(ssl, send, fun(_Socket,_Msg) -> ok end ),
+    meck_ssl(),
     meck:expect(ssl, peername, fun(socket_1) -> {ok,{address_1, port_1}};
 				  (socket_2) -> {ok,{address_2, port_2}};
 				  (socket_3) -> {ok,{address_3, port_3}}
@@ -352,12 +339,7 @@ voice_udp_tunnel_test_case(_Config) ->
     stop_erlmur_client(Pid3).
 
 voice_udp_test_case(_Config) ->
-    %% Start erlmur_client
-    meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
-    meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
-    meck:expect(ssl, setopts, fun(_Socket, _Options) -> ok end),
-
-    meck:expect(ssl, send, fun(_Socket,_Msg) -> ok end ),
+    meck_ssl(),
     meck:expect(ssl, peername, fun(socket_1) -> {ok,{address_1, port_1}};
 				  (socket_2) -> {ok,{address_2, port_2}};
 				  (socket_3) -> {ok,{address_3, port_3}}
@@ -522,3 +504,9 @@ check_user_in_channel(User,Channel) ->
 	    lists:any(fun(U) -> erlmur_users:id(U) =:= erlmur_users:id(User) end, Users)
     end.
 
+meck_ssl() ->
+    %% Start erlmur_client
+    meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
+    meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
+    meck:expect(ssl, setopts, fun(_Socket, _Options) -> ok end),
+    meck:expect(ssl, send, fun(_Socket,_Msg) -> ok end ).
