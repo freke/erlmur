@@ -251,7 +251,15 @@ voice_udp_test_case() ->
 %% @end
 %%--------------------------------------------------------------------
 authenticate_test_case(_Config) ->
-    Pid = start_erlmur_client(1),
+    %% Start erlmur_client
+    meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
+    meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
+    meck:expect(ssl, setopts, fun(_Socket, _Options) -> ok end),
+
+    meck:expect(ssl, send, fun(_Socket,_Msg) -> ok end ),
+    meck:expect(ssl, peername, fun(socket_1) -> {ok,{address_1, port_1}} end),
+
+    Pid = start_erlmur_client(socket_1),
 
     authenticate("User",Pid),
     get_user("User"),
@@ -261,9 +269,15 @@ authenticate_test_case(_Config) ->
     stop_erlmur_client(Pid).
 
 move_to_channel_test_case(_Config) ->
-    Pid = start_erlmur_client(1),
+    %% Start erlmur_client
+    meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
+    meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
+    meck:expect(ssl, setopts, fun(_Socket, _Options) -> ok end),
 
-    meck:expect(ssl,send, fun(ssl_socket_1,_Msg) -> ok end ),
+    meck:expect(ssl, send, fun(socket_1,_Msg) -> ok end ),
+    meck:expect(ssl, peername, fun(socket_1) -> {ok,{address_1, port_1}} end),
+
+    Pid = start_erlmur_client(socket_1),
 
     authenticate("User",Pid),
     User = get_user("User"),
@@ -280,9 +294,20 @@ move_to_channel_test_case(_Config) ->
     stop_erlmur_client(Pid).
 
 voice_udp_tunnel_test_case(_Config) ->
-    Pid1 = start_erlmur_client(1),
-    Pid2 = start_erlmur_client(2),
-    Pid3 = start_erlmur_client(3),
+    %% Start erlmur_client
+    meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
+    meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
+    meck:expect(ssl, setopts, fun(_Socket, _Options) -> ok end),
+
+    meck:expect(ssl, send, fun(_Socket,_Msg) -> ok end ),
+    meck:expect(ssl, peername, fun(socket_1) -> {ok,{address_1, port_1}};
+				  (socket_2) -> {ok,{address_2, port_2}};
+				  (socket_3) -> {ok,{address_3, port_3}}
+			       end),
+
+    Pid1 = start_erlmur_client(socket_1),
+    Pid2 = start_erlmur_client(socket_2),
+    Pid3 = start_erlmur_client(socket_3),
 
     authenticate("user1",Pid1),
     authenticate("user2",Pid2),
@@ -313,8 +338,10 @@ voice_udp_tunnel_test_case(_Config) ->
     {Key,C,S} = erlmur_client:cryptkey(Pid1),
     {EVoice,_} = ocb128crypt:encrypt({Key,S,C,<<16#FF>>,{0,0,0,0},{0,0,0,0}}, Voice),
     
-    meck:expect(ssl, send, fun(ssl_socket_2,ExpectedVoice) -> ok;
-			      (_,_) -> erlang:error(unexpected_message) end ),
+    meck:expect(ssl, send, fun(socket_2,ExpectedVoice) -> ok;
+			      (S,_) -> error_logger:error_report([{ssl,send},
+								  {socket,S}]),
+				       erlang:error(unexpected_message) end ),
 
     erlmur_client:handle_msg(Pid1,port,EVoice),
     timer:sleep(500),
@@ -325,9 +352,20 @@ voice_udp_tunnel_test_case(_Config) ->
     stop_erlmur_client(Pid3).
 
 voice_udp_test_case(_Config) ->
-    Pid1 = start_erlmur_client(1),
-    Pid2 = start_erlmur_client(2),
-    Pid3 = start_erlmur_client(3),
+    %% Start erlmur_client
+    meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
+    meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
+    meck:expect(ssl, setopts, fun(_Socket, _Options) -> ok end),
+
+    meck:expect(ssl, send, fun(_Socket,_Msg) -> ok end ),
+    meck:expect(ssl, peername, fun(socket_1) -> {ok,{address_1, port_1}};
+				  (socket_2) -> {ok,{address_2, port_2}};
+				  (socket_3) -> {ok,{address_3, port_3}}
+			       end),
+
+    Pid1 = start_erlmur_client(socket_1),
+    Pid2 = start_erlmur_client(socket_2),
+    Pid3 = start_erlmur_client(socket_3),
 
     authenticate("user1",Pid1),
     authenticate("user2",Pid2),
@@ -358,7 +396,7 @@ voice_udp_test_case(_Config) ->
 		      15,121,21,178,147,133,162,155,146,85,84,164,169,39,16>>,
     
     meck:new(erlmur_udp_server),
-    meck:expect(erlmur_udp_server,send,fun(Address,Port,Data) -> ok end),
+    meck:expect(erlmur_udp_server,send,fun(_, _, Data) -> ok end),
     meck:expect(erlmur_udp_server,terminate,fun(_,_) -> ok end),
     meck:expect(ssl, send, fun(_,_) -> erlang:error(unexpected_message) end ),
 
@@ -374,6 +412,16 @@ voice_udp_test_case(_Config) ->
     PingFun(Pid3),
 
     timer:sleep(500),
+
+    meck:expect(erlmur_udp_server,send,fun(address_2, port, Data) -> ok;
+					  (A,P,_) -> 
+					       error_logger:error_report([{erlmur_udp_server,send},
+									  {address,A},
+									  {port,P}]),
+					       erlang:error(unexpected_message)
+				       end),
+    meck:expect(erlmur_udp_server,terminate,fun(_,_) -> ok end),
+    meck:expect(ssl, send, fun(_,_) -> erlang:error(unexpected_message) end ),
 
     {EVoice,_} = ocb128crypt:encrypt(Key, Voice),
 
@@ -420,16 +468,7 @@ start_erlmur() ->
 stop_erlmur() ->
     application:stop(erlmur).
     
-start_erlmur_client(Id) ->
-    Socket = list_to_atom(lists:flatten(io_lib:format("ssl_socket_~p",[Id]))),
-    %% Start erlmur_client
-    meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
-    meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
-    meck:expect(ssl, setopts, fun(_Socket, _Options) -> ok end),
-
-    meck:expect(ssl, send, fun(_Socket,_Msg) -> ok end ),
-    meck:expect(ssl, peername, fun(Socket) -> {ok,{address, port}} end),
-
+start_erlmur_client(Socket) ->
     {ok, Child} = supervisor:start_child(erlmur_client_sup, []),
     gen_server:cast(Child, {socket, Socket}),
     Child.
