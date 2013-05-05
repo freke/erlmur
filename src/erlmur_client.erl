@@ -139,8 +139,8 @@ handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket}
     S = State#state{udp_port=PortNo},
     NewState = case ocb128crypt:decrypt(Key, EncryptedMsg) of
 		   {Msg,NewKey} ->
-		       NewS = handle_udp_msg(erlmur_message:data_msg(Msg),S),
-		       NewS#state{use_udp_tunnel=false};
+		       NewS = S#state{use_udp_tunnel=false},
+		       handle_udp_msg(erlmur_message:data_msg(Msg),NewS);
 		   error ->
 		       error_logger:info_report([{erlmur_client,handle_cast},{handle_msg,"Error decrypting message"}]),
 		       S

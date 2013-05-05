@@ -200,7 +200,7 @@ groups() ->
 %% @end
 %%--------------------------------------------------------------------
 all() -> 
-    [authenticate_test_case,move_to_channel_test_case,voice_udp_tunnel_test_case].
+    [authenticate_test_case,move_to_channel_test_case,voice_udp_tunnel_test_case,voice_udp_test_case].
 
 
 %%--------------------------------------------------------------------
@@ -228,6 +228,9 @@ move_to_channel_test_case() ->
     [].
 
 voice_udp_tunnel_test_case() ->
+    [].
+
+voice_udp_test_case() ->
     [].
 
 %%--------------------------------------------------------------------
@@ -321,12 +324,67 @@ voice_udp_tunnel_test_case(_Config) ->
     stop_erlmur_client(Pid2),
     stop_erlmur_client(Pid3).
 
-voice_test_case(_Config) ->
+voice_udp_test_case(_Config) ->
+    Pid1 = start_erlmur_client(1),
+    Pid2 = start_erlmur_client(2),
+    Pid3 = start_erlmur_client(3),
+
+    authenticate("user1",Pid1),
+    authenticate("user2",Pid2),
+    authenticate("user3",Pid3),
+
+    channel("Channel 1",Pid3),
+    
+    User3 = get_user("user3"),
+    Channel = get_channel("Channel 1"),
+    move_to_channel(User3,Channel,Pid3),
+
+    true = check_user_in_channel(User3,Channel),
+
+    Ping = <<1:3,0:5,0:8>>,
+
+    Voice = <<0,84,178,223,247,218,21,152,157,133,210,99,32,119,236,248,92,66,214,42,
+	      171,163,21,27,146,189,15,119,5,128,159,150,25,240,156,194,50,128,15,121,
+	      21,178,147,133,162,155,146,85,84,164,169,39,16,50,223,247,218,21,152,157, 
+	      133,210,99,32,119,236,248,92,66,214,42,171,163,21,27,146,189,15,119,5,128,
+	      159,150,25,240,156,194,50,128,15,121,21,178,147,133,162,155,146,85,84,164,
+	      169,39,16>>,
+
+   ExpectedVoice =  <<0,1,0,0,0,105,0,1,84,178,223,247,218,21,152,157,133,210,99,32,119,
+		      236,248,92,66,214,42,171,163,21,27,146,189,15,119,5,128,159,150,25,
+		      240,156,194,50,128,15,121,21,178,147,133,162,155,146,85,84,164,169,
+		      39,16,50,223,247,218,21,152,157,133,210,99,32,119,236,248,92,66,214,
+		      42,171,163,21,27,146,189,15,119,5,128,159,150,25,240,156,194,50,128,
+		      15,121,21,178,147,133,162,155,146,85,84,164,169,39,16>>,
+    
     meck:new(erlmur_udp_server),
     meck:expect(erlmur_udp_server,send,fun(Address,Port,Data) -> ok end),
     meck:expect(erlmur_udp_server,terminate,fun(_,_) -> ok end),
-    true = meck:validate(erlmur_udp_server),
-    ok.
+    meck:expect(ssl, send, fun(_,_) -> erlang:error(unexpected_message) end ),
+
+    PingFun = fun(Pid) ->
+		      {Key,C,S} = erlmur_client:cryptkey(Pid),
+		      {EPing,NewKey} = ocb128crypt:encrypt({Key,S,C,<<16#FF>>,{0,0,0,0},{0,0,0,0}}, Ping),
+		      erlmur_client:handle_msg(Pid,port,EPing),
+		      NewKey
+	      end,
+
+    Key = PingFun(Pid1),
+    PingFun(Pid2),
+    PingFun(Pid3),
+
+    timer:sleep(500),
+
+    {EVoice,_} = ocb128crypt:encrypt(Key, Voice),
+
+    erlmur_client:handle_msg(Pid1,port,EVoice),
+    timer:sleep(500),
+    true = meck:validate(ssl), 
+    true = meck:validate(erlmur_udp_server), 
+
+    stop_erlmur_client(Pid1),
+    stop_erlmur_client(Pid2),
+    stop_erlmur_client(Pid3).
 
 %%--------------------------------------------------------------------
 %% Help functions
