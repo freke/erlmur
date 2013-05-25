@@ -200,7 +200,7 @@ groups() ->
 %% @end
 %%--------------------------------------------------------------------
 all() -> 
-    [authenticate_test_case,registerd_user_test_case,move_to_channel_test_case,voice_udp_tunnel_test_case,voice_udp_test_case].
+    [authenticate_test_case,move_to_channel_test_case,voice_udp_tunnel_test_case,voice_udp_test_case]. % registerd_user_test_case
 
 
 %%--------------------------------------------------------------------
