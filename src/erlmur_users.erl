@@ -131,6 +131,12 @@ find_user({name,Name}) ->
 		mnesia:select(user, Match)
 	end,
     mnesia:activity(transaction, F);
+find_user({channel_id,ChannelId}) ->
+    Match = ets:fun2ms(fun(X = #user{channel_id=C}) when ChannelId =:= C -> X end),
+    F = fun() ->
+		mnesia:select(user, Match)
+	end,
+    mnesia:activity(transaction, F);
 find_user({session,[]}) ->
     [];
 find_user({session,[Session|Sessions]}) ->
