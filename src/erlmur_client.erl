@@ -335,7 +335,7 @@ handle_control_msg([{userlist,_Prop}|Rest], State=#state{socket=Socket}) ->
     ssl:send(Socket,erlmur_message:pack({userlist,Users})),
     handle_control_msg(Rest,State);
 handle_control_msg([{banlist,Prop}|Rest], State=#state{socket=Socket}) ->
-    case proplists:get_bool(query,Prop) of
+    case proplists:get_bool('query',Prop) of
         true ->
             Banlist = erlmur_server:list_banlist(),
             ssl:send(Socket,erlmur_message:pack({banlist,Banlist}));
