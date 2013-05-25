@@ -24,7 +24,8 @@
 	 list/0,
 	 move_to_channel/2,
 	 send_to_all/1,
-	 list_registered_users/0]).
+	 list_registered_users/0,
+	 users_in_channel/1]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
 -include_lib("record_info/include/record_info.hrl").
@@ -51,6 +52,11 @@ init(Nodes) ->
     ets:insert(user_counters, #counter_entry{id=sessionid, value=0}),
     ok = mnesia:wait_for_tables([user],5000).
 
+%%--------------------------------------------------------------------
+%% @doc
+%% @spec
+%% @end
+%%--------------------------------------------------------------------
 id(User) ->
     User#user.id.
 
@@ -119,18 +125,16 @@ find_user({address,Address}) ->
 		mnesia:select(user, Match)
 	end,
     mnesia:activity(transaction, F);
-find_user({channel_id,ChannelId}) ->		
-    Match = ets:fun2ms(fun(X = #user{channel_id=C}) when ChannelId =:= C -> X end),
-    F = fun() ->
-		mnesia:select(user, Match)
-	end,
-    mnesia:activity(transaction, F);
 find_user({name,Name}) ->
     Match = ets:fun2ms(fun(X = #user{name=N}) when Name =:= N -> X end),
     F = fun() ->
 		mnesia:select(user, Match)
 	end,
     mnesia:activity(transaction, F);
+find_user({session,[]}) ->
+    [];
+find_user({session,[Session|Sessions]}) ->
+    lists:flatten([find_user({session,Session}),find_user({session,Sessions})]);
 find_user({session,Session}) ->
     Match = ets:fun2ms(fun(X = #user{session=S}) when Session =:= S -> X end),
     F = fun() ->
@@ -293,6 +297,23 @@ send_to_all(Msg) ->
 %%--------------------------------------------------------------------
 list_registered_users() ->
     [].
+
+%%--------------------------------------------------------------------
+%% @doc
+%% @spec
+%% @end
+%%--------------------------------------------------------------------
+users_in_channel([]) ->
+    [];
+users_in_channel([Channel|Channels]) ->
+    lists:append(users_in_channel(Channel),users_in_channel(Channels));
+users_in_channel(Channel) ->
+    ChannelId = erlmur_channels:id(Channel),
+    Match = ets:fun2ms(fun(X = #user{channel_id=C}) when ChannelId =:= C -> X end),
+    F = fun() ->
+		mnesia:select(user, Match)
+	end,
+    mnesia:activity(transaction, F).
 
 %%--------------------------------------------------------------------
 %% Internal

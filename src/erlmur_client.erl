@@ -150,7 +150,7 @@ handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket,
 		       NewS = maybe_toggle_udp_tunnel(S,false),
 		       handle_udp_msg(erlmur_message:data_msg(Msg),NewS);
 		   error ->
-		       error_logger:info_report([{erlmur_client,handle_cast},{handle_msg,"Error decrypting message"}]),
+		       %error_logger:info_report([{erlmur_client,handle_cast},{handle_msg,"Error decrypting message"}]),
 		       S
 	       end,
     {noreply,NewState};
@@ -346,6 +346,27 @@ handle_control_msg([{banlist,Prop}|Rest], State=#state{socket=Socket}) ->
     handle_control_msg(Rest,State);
 handle_control_msg([{udptunnel,Msg}|Rest], State=#state{socket=Socket}) ->
     ssl:send(Socket,erlmur_message:pack({udp_tunnel,Msg})),
+    handle_control_msg(Rest,State);
+handle_control_msg([{textmessage,Prop}|Rest], State=#state{socket=Socket}) ->
+    User = erlmur_users:fetch_user({client_pid,self()}),
+    Msg = lists:keyreplace(actor, 1, Prop, {actor,erlmur_users:id(User)}),
+
+    DirectTo = erlmur_users:find_user({session,proplists:get_value(session,Prop)}),
+
+    ParentChannels = erlmur_channels:find_by_id(proplists:get_value(tree_id,Prop)),
+    SubChannels = erlmur_channels:subchannels(ParentChannels),
+    Channels = erlmur_channels:find_by_id(proplists:get_value(channel_id,Prop)),
+
+    Users = lists:delete(User,erlmur_users:users_in_channel(lists:append(Channels,SubChannels))),
+
+    error_logger:info_report([{erlmur_client,textmessage},
+			      {parentChannels,ParentChannels},
+			      {subchannels,SubChannels},
+			      {channels,Channels},
+			      {users,Users},
+			      {msg,Msg}]),
+    
+    send_to(lists:append(DirectTo,Users),{textmessage,Msg}),
     handle_control_msg(Rest,State).
 
 send_codecversion(C, Socket) ->
@@ -366,6 +387,8 @@ send_all_user_states(Socket) ->
 
 send_all_channel_states(Socket) ->
     CS = erlmur_channels:all_channel_states(),
+    error_logger:info_report([{erlmur_client,send_all_channels_states},
+			      {channel_states,CS}]),
     send_all(Socket,CS).
 
 send_all(Socket,Msg) ->
@@ -385,3 +408,11 @@ maybe_toggle_udp_tunnel(State,UseUdpTunnel) ->
 				      {using_udp_tunnel,UseUdpTunnel}]),
 	    State#state{use_udp_tunnel=UseUdpTunnel}
     end.
+
+send_to([],_) ->
+    ok;
+send_to([User|Users],Msg) ->
+    send_to(User,Msg),
+    send_to(Users,Msg);
+send_to(User,Msg) ->
+    erlmur_users:client_pid(User) ! Msg.

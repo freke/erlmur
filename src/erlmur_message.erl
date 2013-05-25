@@ -29,7 +29,8 @@
 		     channelstate,
 		     permissionquery,
 		     channelstate,
-		     channelremove]).
+		     channelremove,
+		     textmessage]).
 
 %% 0
 -define(MSG_VERSION, 16#00).
@@ -122,7 +123,11 @@ pack({permissionquery,PropList}) ->
     R = mumble_pb:encode_permissionquery(PQ),
     encode_message(?MSG_PERMISSIONQUERY,R);
 pack({udp_tunnel,Data}) ->
-    encode_message(?MSG_UDPTUNNEL,Data).
+    encode_message(?MSG_UDPTUNNEL,Data);
+pack({textmessage,PropList}) ->
+    TM = textmessage(PropList),
+    R = mumble_pb:encode_textmessage(TM),
+    encode_message(?MSG_TEXTMESSAGE,R).
     
 
 data_msg(<<1:3,0:5,_Timestamp/binary>> = PingMsg) ->
@@ -162,7 +167,9 @@ unpack(?MSG_USERLIST, Msg) ->
 unpack(?MSG_BANLIST, Msg) ->
     {banlist, proplist(mumble_pb:decode_banlist(Msg))};
 unpack(?MSG_USERSTATS, Msg) ->
-    {userstats, proplist(mumble_pb:decode_userstats(Msg))}.
+    {userstats, proplist(mumble_pb:decode_userstats(Msg))};
+unpack(?MSG_TEXTMESSAGE, Msg) ->
+    {textmessage, proplist(mumble_pb:decode_textmessage(Msg))}.
 
 
 proplist(Record) ->
@@ -206,6 +213,9 @@ serversync(PropList) ->
 
 permissionquery(PropList) ->
     record_info:proplist_to_record(PropList, permissionquery, ?MODULE).
+
+textmessage(PropList) ->
+    record_info:proplist_to_record(PropList, textmessage, ?MODULE).
 
 encode_message(Type, Msg) when is_list(Msg) ->
     encode_message(Type, erlang:iolist_to_binary(Msg));

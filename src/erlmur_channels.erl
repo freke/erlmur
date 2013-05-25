@@ -15,6 +15,7 @@
 	 find_by_id/1,
 	 find_by_name/1,
 	 list/0,
+	 subchannels/1,
 	 add/1,
 	 add/2,
 	 update/1,
@@ -79,6 +80,10 @@ permissions(Channel,User) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
+find_by_id([]) ->
+    [];
+find_by_id([Channel|Channels]) ->
+    lists:append(find_by_id(Channel),find_by_id(Channels));
 find_by_id(ChannelId) ->
     Match = ets:fun2ms(fun(X = #channel{channel_id=Id}) when Id =:= ChannelId -> X end),
     F = fun() ->
@@ -101,6 +106,26 @@ find_by_name(Name) ->
 list() ->
     F = fun() ->
 		mnesia:foldl(fun(Channel,Acc) -> [Channel|Acc] end, [], channel)
+	end,
+    mnesia:activity(transaction, F).
+
+subchannels([]) ->
+    [];
+subchannels([Channel|Channels]) ->
+    lists:append(subchannels(Channel),subchannels(Channels));
+subchannels(Channel) ->
+    subchannels(internal_subchannels(Channel),[]).
+
+subchannels([],Result) ->
+    lists:reverse(Result);
+subchannels([Channel|Channels],Result) ->
+    Sub = internal_subchannels(Channel),
+    subchannels(lists:append(Channels,Sub),[Channel|Result]).
+
+internal_subchannels(Channel) ->
+    Match = ets:fun2ms(fun(X = #channel{parent=Id}) when Id =:= Channel#channel.channel_id -> X end),
+    F = fun() ->
+		mnesia:select(channel, Match)
 	end,
     mnesia:activity(transaction, F).
 
@@ -162,11 +187,7 @@ remove([]) ->
     ok;
 remove([Channel|Channels]) ->
     error_logger:info_report([{erlmur_channels,remove},{channel,Channel}]),
-    Match = ets:fun2ms(fun(X = #channel{parent=Id}) when Id =:= Channel#channel.channel_id -> X end),
-    F = fun() ->
-		mnesia:select(channel, Match)
-	end,
-    SubChannels = mnesia:activity(transaction, F),
+    SubChannels = subchannels(Channel),
 
     remove(SubChannels),
     
@@ -186,10 +207,9 @@ remove([Channel|Channels]) ->
 %% @end
 %%--------------------------------------------------------------------
 all_channel_states() ->
-    F = fun() ->
-		mnesia:foldl(fun(Channel,Acc) -> [channelstate(Channel)|Acc] end, [], channel)
-	end,
-    mnesia:activity(transaction, F).
+    [Root] = find_by_id(0),
+    SubChannels = subchannels(Root),
+    lists:map(fun(Channel) -> channelstate(Channel) end, [Root|SubChannels]).
 
 %%--------------------------------------------------------------------
 %% Internal
