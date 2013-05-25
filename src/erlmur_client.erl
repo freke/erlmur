@@ -156,13 +156,12 @@ handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket,
     {noreply,NewState};
 
 handle_cast({update_key_remote,{Good,Late,Lost,Resync}}, State = #state{stats=Stats}) ->
-    NewStats = erlmur_start:client_ping({Good,Late,Lost,Resync},Stats),
+    NewStats = erlmur_stats:client_ping({Good,Late,Lost,Resync},Stats),
     {noreply,State#state{stats=NewStats}};
 
-handle_cast({resync,ClientNonce}, State = #state{cryptkey=Key,stats=Stats})->
+handle_cast({resync,ClientNonce}, State = #state{cryptkey=Key})->
     NewKey = ocb128crypt:client_nonce(ClientNonce,Key),
-    NewStats = erlmur_stats:client_resync(Stats),
-    {noreply,State#state{cryptkey=NewKey,stats=NewStats}};
+    {noreply,State#state{cryptkey=NewKey}};
 
 handle_cast(use_udp_tunnel, State) ->
     {noreply,State#state{use_udp_tunnel=true}};
@@ -295,7 +294,9 @@ handle_control_msg([{userstats,Prop}|Rest],State=#state{socket=Socket,stats=Stat
     ssl:send(Socket,erlmur_message:pack({userstats,S})),
     handle_control_msg(Rest,State);
 handle_control_msg([{userremove,Prop}|Rest],State) ->
-    erlmur_server:userremove(Prop),
+    User = erlmur_users:fetch_user({client_pid,self()}),
+    Remove = lists:keyreplace(actor, 1, Prop, {actor,erlmur_users:id(User)}),
+    erlmur_server:userremove(Remove),
     handle_control_msg(Rest,State);
 handle_control_msg([{channelstate,Prop}|Rest],State) ->
     erlmur_server:channelstate(Prop),
@@ -361,18 +362,17 @@ send_crypto_keys(Key, Socket) ->
 
 send_all_user_states(Socket) ->
     US=erlmur_users:all_user_states(),
-    lists:foreach(fun(K) ->
-			  R=erlmur_message:pack(K),
-			  ssl:send(Socket,R)
-		  end, US).
-
+    send_all(Socket,US).
 
 send_all_channel_states(Socket) ->
     CS = erlmur_channels:all_channel_states(),
+    send_all(Socket,CS).
+
+send_all(Socket,Msg) ->
     lists:foreach(fun(K) ->
 			  R=erlmur_message:pack(K),
 			  ssl:send(Socket,R)
-		  end, CS).
+		  end, Msg).
 
 
 maybe_toggle_udp_tunnel(State,UseUdpTunnel) ->

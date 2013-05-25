@@ -290,7 +290,11 @@ handle_cast({channelremove,Channel},State) ->
 
 handle_cast({userremove,UserRemove}, State) ->
     error_logger:info_report([{erlmur_server,handle_cast},{userremove,UserRemove}]),
-    User = erlmur_users:fetch_user({session,proplists:get_value(session,erlmur_message:proplist(UserRemove))}),
+    User = erlmur_users:fetch_user({session,proplists:get_value(session,UserRemove)}),
+    erlmur_users:remove(User,
+			proplists:get_value(actor,UserRemove),
+			proplists:get_value(reason,UserRemove),
+			proplists:get_value(ban,UserRemove)),
     erlmur_client:stop(erlmur_users:client_pid(User)),
     {noreply, State};
 

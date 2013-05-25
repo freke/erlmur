@@ -18,7 +18,7 @@
 	 list_clients/0,
 	 find_user/1,
 	 fetch_user/1,
-	 remove/2,
+	 remove/4,
 	 add/3,
 	 update/2,
 	 list/0,
@@ -174,17 +174,17 @@ fetch_user({id,Id}) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-remove([], _Reason) ->
+remove([], _Actor, _Reason, _Ban) ->
     ok;
-remove([User|Users], Reason) ->
-    remove(User,Reason),
-    remove(Users,Reason);
-remove(User, Reason) ->
+remove([User|Users], Actor, Reason, Ban) ->
+    remove(User, Actor, Reason, Ban),
+    remove(Users, Actor, Reason, Ban);
+remove(User, Actor, Reason , Ban) ->
     F = fun() ->
 		mnesia:delete({user,User#user.id})
 	end,
     mnesia:activity(transaction, F),
-    send_to_all(userremove(User,Reason)).
+    send_to_all(userremove(User,Actor,Reason,Ban)).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -300,5 +300,5 @@ list_registered_users() ->
 userstate(User) ->
     {userstate,record_info:record_to_proplist(User, ?MODULE)}.
 
-userremove(User,Reason) ->
-    {userremove,[{reason,Reason}|record_info:record_to_proplist(User, ?MODULE)]}.
+userremove(User,Actor,Reason,Ban) ->
+    {userremove,[{reason,Reason},{actor,Actor},{ban,Ban}|record_info:record_to_proplist(User, ?MODULE)]}.

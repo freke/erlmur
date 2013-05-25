@@ -367,7 +367,7 @@ handle_pb(?MSG_CHANNELSTATE, Msg, _Client) ->
     erlmur_server:channelstate(mumble_pb:decode_channelstate(Msg));
 
 handle_pb(?MSG_CHANNELREMOVE, Msg, _Client) ->
-    erlmur_server:channel_remove(mumble_pb:decode_channelremove(Msg));
+    erlmur_server:channelremove(mumble_pb:decode_channelremove(Msg));
 
 handle_pb(?MSG_USERSTATE, Msg, _Client) ->
     erlmur_server:userstate(mumble_pb:decode_userstate(Msg));
