@@ -26,7 +26,8 @@
 	 serversync/1,
 	 permissionquery/1,
 	 usercount/0,
-	 voice_data/6]).
+	 voice_data/6,
+	 list_banlist/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -53,8 +54,6 @@
 -define(PERM_ALL, 16#f07ff).
 
 -define(SERVER, ?MODULE).
-
--include("mumble_pb.hrl").
 
 -record(state, {}).
 
@@ -117,6 +116,9 @@ usercount() ->
 voice_data(Type,Target,ClientPid,Counter,Voice,Positional) ->
     gen_server:cast(?SERVER,{voice_data,Type,Target,ClientPid,Counter,Voice,Positional}).
 
+list_banlist() ->
+    [].
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -134,8 +136,13 @@ voice_data(Type,Target,ClientPid,Counter,Voice,Positional) ->
 %%--------------------------------------------------------------------
 init([]) ->
     Nodes = [node()],
-    erlmur_channels:init(),
+    erlmur_channels:init(Nodes),
     erlmur_users:init(Nodes),
+    erlmur_channels:add(0,"Root"),
+    case erlmur_channels:find_by_id(0) of
+	[] -> erlmur_channels:add(0,"Root");
+	_ -> ok
+    end,
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -160,7 +167,7 @@ handle_call(version, _From, State) ->
 			io_lib:format("~w.~w.~w",[Major,Minor,Release]);
 		    V -> V
 		end,
-    <<ErlmurVersion:4>> = <<0:2,0:1,1:1>>,
+    <<ErlmurVersion:32>> = <<1:16,2:8,3:8>>,
     {reply, [{version, ErlmurVersion}, 
 	     {release, <<"erlmur">>}, 
 	     {os, list_to_binary(OsNameString)},
@@ -209,8 +216,12 @@ handle_call({serversync,Session}, {_Pid,_}, State) ->
       {welcome_text, <<"Welcome to Erlmur.">>}], 
      State};
 
-handle_call({permissionquery,Perm}, _From, S) ->
-    NewPerm = lists:keyreplace(permissions, 1, Perm, {permissions,?PERM_ALL}),
+handle_call({permissionquery,Perm}, {Pid,_}, S) ->
+    ChannelId = proplists:get_value(channel_id,Perm),
+    [Channel] = erlmur_channels:find_by_id(ChannelId),
+    User = erlmur_users:fetch_user({client_pid,Pid}),
+    Permissions = erlmur_channels:permissions(Channel,User),
+    NewPerm = lists:keyreplace(permissions, 1, Perm, {permissions,Permissions}),
     {reply, NewPerm, S};
 
 handle_call(usercount, _From, State) ->
@@ -275,11 +286,6 @@ handle_cast({channelremove,Channel},State) ->
     erlmur_channels:remove(
       erlmur_channels:find_by_id(
 	proplists:get_value(channel_id,Channel))),
-    {noreply, State};
-
-handle_cast({userstate,UserState}, State) ->
-    error_logger:info_report([{erlmur_server,handle_cast},{userstate,UserState}]),
-    erlmur_users:update(UserState),
     {noreply, State};
 
 handle_cast({userremove,UserRemove}, State) ->

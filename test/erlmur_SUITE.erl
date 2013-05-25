@@ -200,7 +200,7 @@ groups() ->
 %% @end
 %%--------------------------------------------------------------------
 all() -> 
-    [authenticate_test_case,move_to_channel_test_case,voice_udp_tunnel_test_case,voice_udp_test_case].
+    [authenticate_test_case,registerd_user_test_case,move_to_channel_test_case,voice_udp_tunnel_test_case,voice_udp_test_case].
 
 
 %%--------------------------------------------------------------------
@@ -222,6 +222,9 @@ all() ->
 %% @end
 %%--------------------------------------------------------------------
 authenticate_test_case() -> 
+    [].
+
+registerd_user_test_case() ->
     [].
 
 move_to_channel_test_case() ->
@@ -260,6 +263,29 @@ authenticate_test_case(_Config) ->
     authenticate("User",Pid),
     get_user("User"),
 
+    true = meck:validate(ssl),
+
+    stop_erlmur_client(Pid).
+
+registerd_user_test_case(_Config) ->
+    %% Start erlmur_client
+    meck_ssl(),
+    meck:expect(ssl, peername, fun(socket_1) -> {ok,{address_1, port_1}} end),
+
+    Pid = start_erlmur_client(socket_1),
+
+    authenticate("User",Pid),
+    User = get_user("User"),
+    erlmur:register_user(User),
+
+    Expected = erlmur_message:pack({userlist,[{erlmur_users:id(User),erlmur_users:name(User)}]}),
+    meck:expect(ssl, send, fun(socket_1,<<0,18,_/binary>>=Msg) when Msg =:= Expected -> ok;
+			      (socket_1,<<0,18,_/binary>>) -> erlang:error(unexpected_registerd_user);
+			      (socket_1,_Msg) -> ok
+			  end ),
+    get_registered_users(Pid),
+
+    timer:sleep(500),
     true = meck:validate(ssl),
 
     stop_erlmur_client(Pid).
@@ -437,7 +463,9 @@ move_to_channel(User,Channel,Pid) ->
 					      {channel_id,erlmur_channels:id(Channel)}]}),
     Pid ! {ssl, self(), UserMsg}.
 
-
+get_registered_users(Pid) ->
+    UserListMsg = erlmur_message:pack({userlist,[]}),
+    Pid ! {ssl, self(), UserListMsg}.
 
 start_erlmur() ->
     %% Setup ssl

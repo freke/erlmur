@@ -7,10 +7,12 @@
 
 -module(erlmur).
 
--export([start/0]).
+-export([start/0,register_user/1]).
 
 start() ->
     ssl:start(),
     application:start(mnesia),
     application:start(erlmur).
 
+register_user(User) ->
+    ok.

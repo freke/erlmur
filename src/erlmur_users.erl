@@ -20,17 +20,18 @@
 	 fetch_user/1,
 	 remove/2,
 	 add/3,
-	 update/1,
+	 update/2,
 	 list/0,
 	 move_to_channel/2,
-	 send_to_all/1]).
+	 send_to_all/1,
+	 list_registered_users/0]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
 -include_lib("record_info/include/record_info.hrl").
 
 -export_record_info([user]).
 
--record(user,{id,name,address,session,channel_id,client_pid}).
+-record(user,{id,name,address,session,channel_id,client_pid,self_mute=false,self_deaf=false,comment}).
 -record(counter_entry, {id, value=0}).
 
 %%--------------------------------------------------------------------
@@ -118,16 +119,26 @@ find_user({address,Address}) ->
 		mnesia:select(user, Match)
 	end,
     mnesia:activity(transaction, F);
-
 find_user({channel_id,ChannelId}) ->		
     Match = ets:fun2ms(fun(X = #user{channel_id=C}) when ChannelId =:= C -> X end),
     F = fun() ->
 		mnesia:select(user, Match)
 	end,
     mnesia:activity(transaction, F);
-
 find_user({name,Name}) ->
     Match = ets:fun2ms(fun(X = #user{name=N}) when Name =:= N -> X end),
+    F = fun() ->
+		mnesia:select(user, Match)
+	end,
+    mnesia:activity(transaction, F);
+find_user({session,Session}) ->
+    Match = ets:fun2ms(fun(X = #user{session=S}) when Session =:= S -> X end),
+    F = fun() ->
+		mnesia:select(user, Match)
+	end,
+    mnesia:activity(transaction, F);
+find_user({client_pid,Pid}) ->
+    Match = ets:fun2ms(fun(X = #user{client_pid=P}) when Pid =:= P -> X end),
     F = fun() ->
 		mnesia:select(user, Match)
 	end,
@@ -190,7 +201,6 @@ add(Pid,Name,Address) ->
 	       client_pid=Pid,
 	       channel_id=0},
     F = fun() ->
-		
 		mnesia:write(User)
 	end,
     mnesia:activity(transaction, F),
@@ -206,31 +216,28 @@ add(Pid,Name,Address) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-update(User) ->
-    U = fetch_user({session,proplists:get_value(session,User)}),
-    NewUser = update(User,U),
-    send_to_all(userstate(NewUser)),
-    NewUser.
-
 update([],User) ->
     F = fun() ->
 		mnesia:write(user, User, write)
 	end,
     mnesia:activity(transaction, F),
-    User;
+    send_to_all(userstate(User));
 update([{_,undefined}|R], User) ->
     update(R,User);
 update([{channel_id,NewChannel}|R], User) ->
-    %error_logger:info_report([{erlmur_users,update},{channel_id,NewChannel}]),
     update(R,User#user{channel_id=NewChannel});
 update([{client_pid,NewClient}|R], User) ->
-    %error_logger:info_report([{erlmur_users,update},{client_pid,NewClient}]),
     update(R,User#user{client_pid=NewClient});
 update([{name,NewName}|R], User) ->
-    %error_logger:info_report([{erlmur_users,update},{name,NewName}]),
     update(R,User#user{name=NewName});
+update([{self_mute,Mute}|R], User) ->
+    update(R,User#user{self_mute=Mute});
+update([{self_deaf,Deaf}|R], User) ->
+    update(R,User#user{self_deaf=Deaf});
+update([{comment,Comment}|R], User) ->
+    update(R,User#user{comment=Comment});
 update([V|R],User) ->
-    %error_logger:info_report([{erlmur_users,update},{not_updating,V}]),
+    error_logger:info_report([{erlmur_users,update},{not_updating,V}]),
     update(R,User).
 
 %%--------------------------------------------------------------------
@@ -278,6 +285,14 @@ send_to_all(Msg) ->
 			     user)
 	end,
     mnesia:activity(transaction, F).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% @spec
+%% @end
+%%--------------------------------------------------------------------
+list_registered_users() ->
+    [].
 
 %%--------------------------------------------------------------------
 %% Internal

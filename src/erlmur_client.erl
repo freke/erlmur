@@ -21,7 +21,8 @@
 	 resync/2,
 	 cryptkey/1,
 	 handle_msg/3,
-	 stop/1]).
+	 stop/1,
+	 stats/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -30,7 +31,9 @@
 -define(SERVER, ?MODULE). 
 -define(MAX_IDLE_MS,30000).
 
--record(state, {socket,cryptkey,udp_port,use_udp_tunnel=true}).
+-include_lib("stdlib/include/ms_transform.hrl").
+
+-record(state, {socket,cryptkey,udp_port,use_udp_tunnel=true,stats}).
 
 %%%===================================================================
 %%% API
@@ -59,6 +62,9 @@ resync(Pid,ClientNonce) ->
 stop(Pid) ->
     gen_server:cast(Pid,stop).
 
+stats(Pid) ->
+    gen_server:call(Pid,stats).
+
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
@@ -86,7 +92,7 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #state{}}.
+    {ok, #state{stats=erlmur_stats:new()}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -104,6 +110,8 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call(get_cryptkey, _From, State=#state{cryptkey=Key}) ->
     {reply, ocb128crypt:key(Key), State};
+handle_call(stats, _From, State=#state{stats=Stats}) ->
+    {reply, erlmur_stats:stats(Stats), State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -134,12 +142,12 @@ handle_cast({send_udp,Data},State=#state{socket=Socket,use_udp_tunnel=true}) ->
     ssl:send(Socket,erlmur_message:pack({udp_tunnel,Data})),
     {noreply, State};
 
-handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket} = State) ->
+handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket,stats=Stats} = State) ->
     {ok, {Address, Port}} = ssl:peername(Socket),
     S = State#state{udp_port=PortNo},
     NewState = case ocb128crypt:decrypt(Key, EncryptedMsg) of
 		   {Msg,NewKey} ->
-		       NewS = S#state{use_udp_tunnel=false},
+		       NewS = maybe_toggle_udp_tunnel(S,false),
 		       handle_udp_msg(erlmur_message:data_msg(Msg),NewS);
 		   error ->
 		       error_logger:info_report([{erlmur_client,handle_cast},{handle_msg,"Error decrypting message"}]),
@@ -147,13 +155,14 @@ handle_cast({handle_msg,PortNo,EncryptedMsg}, #state{cryptkey=Key,socket=Socket}
 	       end,
     {noreply,NewState};
 
-handle_cast({update_key_remote,{Good,Late,Lost,Resync}}, State = #state{cryptkey=Key}) ->
-    NewKey = ocb128crypt:remote(Good,Late,Lost,Resync,Key),
-    {noreply,State#state{cryptkey=NewKey}};
+handle_cast({update_key_remote,{Good,Late,Lost,Resync}}, State = #state{stats=Stats}) ->
+    NewStats = erlmur_start:client_ping({Good,Late,Lost,Resync},Stats),
+    {noreply,State#state{stats=NewStats}};
 
-handle_cast({resync,ClientNonce}, State = #state{cryptkey=Key})->
+handle_cast({resync,ClientNonce}, State = #state{cryptkey=Key,stats=Stats})->
     NewKey = ocb128crypt:client_nonce(ClientNonce,Key),
-    {noreply,State#state{cryptkey=NewKey}};
+    NewStats = erlmur_stats:client_resync(Stats),
+    {noreply,State#state{cryptkey=NewKey,stats=NewStats}};
 
 handle_cast(use_udp_tunnel, State) ->
     {noreply,State#state{use_udp_tunnel=true}};
@@ -175,7 +184,7 @@ handle_cast(Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({ssl, From, Msg}, #state{socket=Socket} = State) ->
+handle_info({ssl, From, Msg}, #state{socket=Socket,stats=Stats} = State) ->
     Msgs = lists:map(fun({Type,Msg}) -> erlmur_message:unpack(Type,Msg) end, erlmur_message:control_msg(Msg)),
     NewState = handle_control_msg(Msgs,State),
     ssl:setopts(Socket, [{active,once}]),
@@ -266,30 +275,76 @@ handle_control_msg([{permissionquery,Prop}|Rest],State=#state{socket=Socket}) ->
     R=erlmur_message:pack({permissionquery,erlmur_server:permissionquery(Prop)}),
     ssl:send(Socket,R),
     handle_control_msg(Rest,State);
-handle_control_msg([{userstate,Prop}|Rest],State=#state{socket=Socket}) ->
-    erlmur_server:userstate(Prop),
+handle_control_msg([{userstate,Prop}|Rest],State) ->
+    User = erlmur_users:fetch_user({client_pid,self()}),
+    erlmur_users:update(Prop,User),
     handle_control_msg(Rest,State);
-handle_control_msg([{userremove,Prop}|Rest],State=#state{socket=Socket}) ->
+handle_control_msg([{userstats,Prop}|Rest],State=#state{socket=Socket,stats=Stats}) ->
+    Session = proplists:get_value(session,Prop),
+    Pid = self(),
+    User = case erlmur_users:find_user({session,Session}) of
+	       [] -> erlmur_users:fetch_user({client_pid,Pid});
+	       [U] -> U
+	   end,
+    S = case erlmur_users:client_pid(User) of
+	    Pid -> 
+		erlmur_stats:stats(Stats);
+	    C -> 
+		stats(C)
+	end,
+    ssl:send(Socket,erlmur_message:pack({userstats,S})),
+    handle_control_msg(Rest,State);
+handle_control_msg([{userremove,Prop}|Rest],State) ->
     erlmur_server:userremove(Prop),
     handle_control_msg(Rest,State);
-handle_control_msg([{channelstate,Prop}|Rest],State=#state{socket=Socket}) ->
+handle_control_msg([{channelstate,Prop}|Rest],State) ->
     erlmur_server:channelstate(Prop),
     handle_control_msg(Rest,State);
-handle_control_msg([{channelremove,Prop}|Rest],State=#state{socket=Socket}) ->
+handle_control_msg([{channelremove,Prop}|Rest],State) ->
     erlmur_server:channelremove(Prop),
     handle_control_msg(Rest,State);
-handle_control_msg([{ping,Prop}|Rest],State = #state{cryptkey=Key,socket=Socket}) ->
-    {Good,Late,Lost,Resync} = ocb128crypt:local(Key),
-    Pong = let_(Prop = lists:keyreplace(good,1,Prop,{good,Good}),
-		Prop = lists:keyreplace(late,1,Prop,{late,Late}),
-		Prop = lists:keyreplace(lost,1,Prop,{lost,Lost}),
-		lists:keyreplace(resync,1,Prop,{resync,Resync})),
-    NewKey = ocb128crypt:remote(proplists:get_value(good,Prop),
-				proplists:get_value(late,Prop),
-				proplists:get_value(lost,Prop),
-				proplists:get_value(resync,Prop),
-				Key),
+handle_control_msg([{ping,Prop}|Rest],State = #state{socket=Socket,stats=Stats}) ->
+    NewStats = let_(Stats = erlmur_stats:client_ping(
+			      {proplists:get_value(good,Prop),
+			       proplists:get_value(late,Prop),
+			       proplists:get_value(lost,Prop),
+			       proplists:get_value(resync,Prop)},
+			      Stats),
+		    Stats = erlmur_stats:times({proplists:get_value(udp_ping_avg,Prop),
+						proplists:get_value(udp_ping_var,Prop),
+						proplists:get_value(tcp_ping_avg,Prop),
+						proplists:get_value(tcp_ping_var,Prop)},
+					       Stats),
+		    erlmur_stats:packets({proplists:get_value(udp_packets,Prop),
+					  proplists:get_value(tcp_packets,Prop)},
+					 Stats)),
+    
+    {Good,Late,Lost,Resync} = erlmur_stats:server_ping(Stats),
+
+
+    Pong = [{timestamp,proplists:get_value(timestamp,Prop)},
+	    {good,Good},
+	    {late,Late},
+	    {lost,Lost},
+	    {resync,Resync}],
+
     ssl:send(Socket,erlmur_message:pack({ping,Pong})),
+    handle_control_msg(Rest,State#state{stats=NewStats});
+handle_control_msg([{userlist,_Prop}|Rest], State=#state{socket=Socket}) ->
+    Users = erlmur_users:list_registered_users(),
+    ssl:send(Socket,erlmur_message:pack({userlist,Users})),
+    handle_control_msg(Rest,State);
+handle_control_msg([{banlist,Prop}|Rest], State=#state{socket=Socket}) ->
+    case proplists:get_bool(query,Prop) of
+        true ->
+            Banlist = erlmur_server:list_banlist(),
+            ssl:send(Socket,erlmur_message:pack({banlist,Banlist}));
+        false ->
+            ok
+    end,
+    handle_control_msg(Rest,State);
+handle_control_msg([{udptunnel,Msg}|Rest], State=#state{socket=Socket}) ->
+    ssl:send(Socket,erlmur_message:pack({udp_tunnel,Msg})),
     handle_control_msg(Rest,State).
 
 send_codecversion(C, Socket) ->
@@ -318,3 +373,15 @@ send_all_channel_states(Socket) ->
 			  R=erlmur_message:pack(K),
 			  ssl:send(Socket,R)
 		  end, CS).
+
+
+maybe_toggle_udp_tunnel(State,UseUdpTunnel) ->
+    UsingUdpTunnel = State#state.use_udp_tunnel,
+    if
+	UsingUdpTunnel =:= UseUdpTunnel -> 
+	    State;
+	UsingUdpTunnel =/= UseUdpTunnel ->
+	    error_logger:info_report([{erlmur_client,maybe_toggle_udp_tunnel},
+				      {using_udp_tunnel,UseUdpTunnel}]),
+	    State#state{use_udp_tunnel=UseUdpTunnel}
+    end.
