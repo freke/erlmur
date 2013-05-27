@@ -62,7 +62,7 @@ select_by_id(_) ->
 
 move_user_to_channel(_) ->
     U = add_user(self(),user1,1),
-    erlmur_users:move_to_channel(U,1),
+    erlmur_users:move_to_channel(U,1,U),
     [?_assertEqual(1, length(erlmur_users:list())),
      ?_assertEqual(0, length(erlmur_users:find_user({channel_id,0}))),
      ?_assertEqual(1, length(erlmur_users:find_user({channel_id,1}))),
@@ -71,7 +71,7 @@ move_user_to_channel(_) ->
 remove_user(_) ->
     U1 = add_user(self(),user1,1),
     U2 = add_user(self(),user2,2),
-    erlmur_users:remove(U1,0,"Test",false),
+    erlmur_users:remove(U1,U2,"Test",false),
     [?_assertEqual(1, length(erlmur_users:list())),
      ?_assertEqual(1, length(erlmur_users:find_user({channel_id,0}))),
      ?_assert(meck:validate(erlmur_client))].

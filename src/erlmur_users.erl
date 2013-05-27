@@ -14,15 +14,15 @@
 	 session/1,
 	 name/1,
 	 channel_id/1,
-	 all_user_states/0,
+	 all_user_states/1,
 	 list_clients/0,
 	 find_user/1,
 	 fetch_user/1,
 	 remove/4,
 	 add/3,
-	 update/2,
+	 update/3,
 	 list/0,
-	 move_to_channel/2,
+	 move_to_channel/3,
 	 send_to_all/1,
 	 list_registered_users/0,
 	 users_in_channel/1]).
@@ -97,9 +97,9 @@ channel_id(User) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-all_user_states() ->
+all_user_states(Actor) ->
     F = fun() ->
-		mnesia:foldl(fun(User,Acc) -> [userstate(User)|Acc] end, [], user)
+		mnesia:foldl(fun(User,Acc) -> [userstate(User,Actor)|Acc] end, [], user)
 	end,
     mnesia:activity(transaction, F).
 
@@ -218,7 +218,7 @@ add(Pid,Name,Address) ->
 			      {id,UserId},
 			      {name,Name},
 			      {session_id,SessionId}]),
-    send_to_all(userstate(User)),
+    send_to_all(userstate(User,undefined)),
     UserId.
 
 %%--------------------------------------------------------------------
@@ -226,29 +226,29 @@ add(Pid,Name,Address) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-update([],User) ->
+update([],User,Actor) ->
     F = fun() ->
 		mnesia:write(user, User, write)
 	end,
     mnesia:activity(transaction, F),
-    send_to_all(userstate(User));
-update([{_,undefined}|R], User) ->
-    update(R,User);
-update([{channel_id,NewChannel}|R], User) ->
-    update(R,User#user{channel_id=NewChannel});
-update([{client_pid,NewClient}|R], User) ->
-    update(R,User#user{client_pid=NewClient});
-update([{name,NewName}|R], User) ->
-    update(R,User#user{name=NewName});
-update([{self_mute,Mute}|R], User) ->
-    update(R,User#user{self_mute=Mute});
-update([{self_deaf,Deaf}|R], User) ->
-    update(R,User#user{self_deaf=Deaf});
-update([{comment,Comment}|R], User) ->
-    update(R,User#user{comment=Comment});
-update([V|R],User) ->
+    send_to_all(userstate(User,Actor));
+update([{_,undefined}|R], User,Actor) ->
+    update(R,User,Actor);
+update([{channel_id,NewChannel}|R], User,Actor) ->
+    update(R,User#user{channel_id=NewChannel},Actor);
+update([{client_pid,NewClient}|R], User,Actor) ->
+    update(R,User#user{client_pid=NewClient},Actor);
+update([{name,NewName}|R], User,Actor) ->
+    update(R,User#user{name=NewName},Actor);
+update([{self_mute,Mute}|R], User,Actor) ->
+    update(R,User#user{self_mute=Mute},Actor);
+update([{self_deaf,Deaf}|R], User,Actor) ->
+    update(R,User#user{self_deaf=Deaf},Actor);
+update([{comment,Comment}|R], User,Actor) ->
+    update(R,User#user{comment=Comment},Actor);
+update([V|R],User,Actor) ->
     error_logger:info_report([{erlmur_users,update},{not_updating,V}]),
-    update(R,User).
+    update(R,User,Actor).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -266,18 +266,18 @@ list() ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-move_to_channel([],_) ->
+move_to_channel([],_,_) ->
     ok;
-move_to_channel([User|Users],ChannelId) ->
-    move_to_channel(User,ChannelId),
-    move_to_channel(Users,ChannelId);
-move_to_channel(User,ChannelId) ->
+move_to_channel([User|Users],ChannelId,Actor) ->
+    move_to_channel(User,ChannelId,Actor),
+    move_to_channel(Users,ChannelId,Actor);
+move_to_channel(User,ChannelId,Actor) ->
     error_logger:info_report([{erlmur_users,move_to_channel},{user,User},{channel,ChannelId}]),
     F = fun() ->
 		[U] = mnesia:dirty_read(user,User#user.id),
 		NewU = U#user{channel_id=ChannelId},
 		mnesia:write(NewU),
-		send_to_all(userstate(NewU))
+		send_to_all(userstate(NewU,Actor))
 	end,
     mnesia:activity(transaction, F).
 
@@ -324,8 +324,14 @@ users_in_channel(Channel) ->
 %%--------------------------------------------------------------------
 %% Internal
 %%--------------------------------------------------------------------
-userstate(User) ->
-    {userstate,record_info:record_to_proplist(User, ?MODULE)}.
+userstate(User,undefined) ->
+    {userstate,record_info:record_to_proplist(User, ?MODULE)};
+userstate(User,Actor) ->
+    ActorId = id(Actor),
+    {userstate,[{actor,ActorId}|record_info:record_to_proplist(User, ?MODULE)]}.
 
+userremove(User,undefined,Reason,Ban) ->
+    {userremove,[{reason,Reason},{ban,Ban}|record_info:record_to_proplist(User, ?MODULE)]};
 userremove(User,Actor,Reason,Ban) ->
-    {userremove,[{reason,Reason},{actor,Actor},{ban,Ban}|record_info:record_to_proplist(User, ?MODULE)]}.
+    ActorId = id(Actor),
+    {userremove,[{reason,Reason},{actor,ActorId},{ban,Ban}|record_info:record_to_proplist(User, ?MODULE)]}.

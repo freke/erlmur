@@ -19,7 +19,7 @@
 	 add/1,
 	 add_root/1,
 	 update/1,
-	 remove/1,
+	 remove/2,
 	 permissions/2]).
 
 -define(PERM_NONE, 16#0).
@@ -124,11 +124,7 @@ subchannels([Channel|Channels],Result) ->
     subchannels(lists:append(Channels,Sub),[Channel|Result]).
 
 internal_subchannels(Channel) ->
-    Match = ets:fun2ms(fun(X = #channel{parent=Id}) when Id =:= Channel#channel.channel_id -> X end),
-    F = fun() ->
-		mnesia:select(channel, Match)
-	end,
-    mnesia:activity(transaction, F).
+    lists:map(fun(C) -> [S] = find_by_id(C), S end, Channel#channel.childs).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -187,15 +183,15 @@ update([_|Rest],C) ->
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-remove([]) ->
+remove([],_) ->
     ok;
-remove([Channel|Channels]) ->
+remove([Channel|Channels],Actor) ->
     error_logger:info_report([{erlmur_channels,remove},{channel,Channel}]),
     SubChannels = subchannels(Channel),
 
-    remove(SubChannels),
+    remove(SubChannels,Actor),
     
-    lists:foreach(fun(U) -> erlmur_users:move_to_channel(U,Channel#channel.parent) end, 
+    lists:foreach(fun(U) -> erlmur_users:move_to_channel(U,Channel#channel.parent,Actor) end, 
 		  erlmur_users:find_user({channel_id,Channel#channel.channel_id})),
     
     F = fun() ->
@@ -205,7 +201,7 @@ remove([Channel|Channels]) ->
 	end,
     mnesia:activity(transaction, F),
     erlmur_users:send_to_all(channelremove(Channel)),
-    remove(Channels).
+    remove(Channels,Actor).
 
 %%--------------------------------------------------------------------
 %% @doc

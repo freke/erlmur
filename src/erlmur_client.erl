@@ -262,7 +262,7 @@ handle_control_msg([{authenticate,Prop}|Rest],State=#state{socket=Socket,cryptke
     {ok, {Address, _Port}} = ssl:peername(Socket),
     Sid=erlmur_server:authenticate(UserName,Password,Address),
     send_all_channel_states(Socket),
-    send_all_user_states(Socket),
+    send_all_user_states(Socket,undefined),
     send_crypto_keys(Key, Socket),
     send_codecversion(CeltVersions, Socket),
     Config=erlmur_message:pack({serverconfig,erlmur_server:serverconfig()}),
@@ -276,7 +276,7 @@ handle_control_msg([{permissionquery,Prop}|Rest],State=#state{socket=Socket}) ->
     handle_control_msg(Rest,State);
 handle_control_msg([{userstate,Prop}|Rest],State) ->
     User = erlmur_users:fetch_user({client_pid,self()}),
-    erlmur_users:update(Prop,User),
+    erlmur_users:update(Prop,User,User),
     handle_control_msg(Rest,State);
 handle_control_msg([{userstats,Prop}|Rest],State=#state{socket=Socket,stats=Stats}) ->
     Session = proplists:get_value(session,Prop),
@@ -302,7 +302,8 @@ handle_control_msg([{channelstate,Prop}|Rest],State) ->
     erlmur_server:channelstate(Prop),
     handle_control_msg(Rest,State);
 handle_control_msg([{channelremove,Prop}|Rest],State) ->
-    erlmur_server:channelremove(Prop),
+    User = erlmur_users:fetch_user({client_pid,self()}),
+    erlmur_server:channelremove(Prop,User),
     handle_control_msg(Rest,State);
 handle_control_msg([{ping,Prop}|Rest],State = #state{socket=Socket,stats=Stats}) ->
     NewStats = let_(Stats = erlmur_stats:client_ping(
@@ -381,8 +382,8 @@ send_crypto_keys(Key, Socket) ->
 						  {server_nonce, EIV}]}),
     ssl:send(Socket,CryptSetup).
 
-send_all_user_states(Socket) ->
-    US=erlmur_users:all_user_states(),
+send_all_user_states(Socket,Actor) ->
+    US=erlmur_users:all_user_states(Actor),
     send_all(Socket,US).
 
 send_all_channel_states(Socket) ->

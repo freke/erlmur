@@ -16,7 +16,7 @@
 	 authenticate/3,
 	 channelstates/0,
 	 channelstate/1,
-	 channelremove/1,
+	 channelremove/2,
 	 userstates/0,
 	 userstate/1,
 	 userremove/1,
@@ -83,8 +83,8 @@ channelstates() ->
 channelstate(ChannelState) ->
     gen_server:cast(?SERVER,{channelstate,ChannelState}).
 
-channelremove(Channel) ->
-    gen_server:cast(?SERVER,{channelremove,Channel}).
+channelremove(Channel,Actor) ->
+    gen_server:cast(?SERVER,{channelremove,Channel,Actor}).
 
 userstates() ->
     gen_server:call(?SERVER,userstates).
@@ -281,10 +281,10 @@ handle_cast({channelstate,PropList},State) ->
     end,
     {noreply, State};
 
-handle_cast({channelremove,Channel},State) ->
+handle_cast({channelremove,Channel,Actor},State) ->
     erlmur_channels:remove(
       erlmur_channels:find_by_id(
-	proplists:get_value(channel_id,Channel))),
+	proplists:get_value(channel_id,Channel)),Actor),
     {noreply, State};
 
 handle_cast({userremove,UserRemove}, State) ->

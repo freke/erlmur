@@ -145,4 +145,4 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 removeuser(Pid,Reason) ->
     User = erlmur_users:fetch_user({client_pid,Pid}),
-    erlmur_users:remove(User,0,Reason,false).
+    erlmur_users:remove(User,undefined,Reason,false).
