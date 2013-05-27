@@ -138,9 +138,8 @@ init([]) ->
     Nodes = [node()],
     erlmur_channels:init(Nodes),
     erlmur_users:init(Nodes),
-    erlmur_channels:add(0,"Root"),
     case erlmur_channels:find_by_id(0) of
-	[] -> erlmur_channels:add(0,"Root");
+	[] -> erlmur_channels:add_root("Root");
 	_ -> ok
     end,
     {ok, #state{}}.

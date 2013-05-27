@@ -17,13 +17,10 @@
 	 list/0,
 	 subchannels/1,
 	 add/1,
-	 add/2,
+	 add_root/1,
 	 update/1,
 	 remove/1,
 	 permissions/2]).
-
--include_lib("stdlib/include/ms_transform.hrl").
--include_lib("record_info/include/record_info.hrl").
 
 -define(PERM_NONE, 16#0).
 -define(PERM_WRITE, 16#1).
@@ -45,10 +42,14 @@
 -define(PERM_CACHED, 16#8000000).
 -define(PERM_ALL, 16#f07ff).
 
--record(channel,{channel_id,parent,name,permissions}).
+-record(channel,{channel_id,parent,childs=[],name,permissions}).
 -record(counter_entry, {id, value=0}).
 
 -export_record_info([channel]).
+
+-include_lib("stdlib/include/ms_transform.hrl").
+-include_lib("record_info/include/record_info.hrl").
+-include_lib("stdlib/include/qlc.hrl").
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -135,10 +136,13 @@ internal_subchannels(Channel) ->
 %% @end
 %%--------------------------------------------------------------------
 add(Channel) ->
+    ParentId = proplists:get_value(parent,Channel),
     ChannelId = ets:update_counter(channel_counters, channelid, {#counter_entry.value, 1}),
     C = record_info:proplist_to_record(Channel, channel, ?MODULE),
     NewChannel = C#channel{channel_id=ChannelId},
     F = fun() ->
+		[P] = qlc:e(qlc:q([C || C <- mnesia:table(channel), C#channel.channel_id == ParentId])),
+		mnesia:write(P#channel{childs=[ChannelId|P#channel.childs]}),
 		mnesia:write(NewChannel)
 	end,
     mnesia:activity(transaction, F),
@@ -146,8 +150,8 @@ add(Channel) ->
     error_logger:info_report([{erlmur_channels,add},{new_channel,NewChannel}]),
     NewChannel.
 
-add(Id,Name) ->
-    Channel = #channel{channel_id=Id,name=Name},
+add_root(Name) ->
+    Channel = #channel{channel_id=0,name=Name},
     F = fun() ->
 		mnesia:write(Channel)
 	end,
@@ -195,6 +199,8 @@ remove([Channel|Channels]) ->
 		  erlmur_users:find_user({channel_id,Channel#channel.channel_id})),
     
     F = fun() ->
+		[P] = qlc:e(qlc:q([C || C <- mnesia:table(channel), C#channel.channel_id == Channel#channel.parent])),
+		mnesia:write(P#channel{childs=lists:delete(Channel#channel.channel_id,P#channel.childs)}),
 		mnesia:delete({channel,Channel#channel.channel_id})
 	end,
     mnesia:activity(transaction, F),
