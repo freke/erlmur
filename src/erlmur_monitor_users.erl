@@ -144,5 +144,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 removeuser(Pid,Reason) ->
-    User = erlmur_users:fetch_user({client_pid,Pid}),
-    erlmur_users:remove(User,undefined,Reason,false).
+    Users = erlmur_users:find_user({client_pid,Pid}),
+    lists:foreach(fun(U) ->
+			  erlmur_users:remove(U,undefined,Reason,false)
+		  end,
+		  Users).

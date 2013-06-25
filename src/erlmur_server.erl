@@ -10,6 +10,9 @@
 
 -behaviour(gen_server).
 
+-include_lib("stdlib/include/ms_transform.hrl").
+-include_lib("record_info/include/record_info.hrl").
+
 %% API
 -export([start_link/0,
 	 version/0,
@@ -55,7 +58,12 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {}).
+-record(channel,{channel_id,parent,name}).
+-record(permission,{user,channel}).
+-record(state, {channels}).
+
+-export_record_info([channel]).
+
 
 %%%===================================================================
 %%% API
@@ -136,13 +144,14 @@ list_banlist() ->
 %%--------------------------------------------------------------------
 init([]) ->
     Nodes = [node()],
-    erlmur_channels:init(Nodes),
+
+    Channels = dict:store(0,#channel{channel_id=0, name="Root"},dict:new()),
+
     erlmur_users:init(Nodes),
-    case erlmur_channels:find_by_id(0) of
-	[] -> erlmur_channels:add_root("Root");
-	_ -> ok
-    end,
-    {ok, #state{}}.
+
+    erlmur_channel_feed:start_link(),
+
+    {ok, #state{channels=Channels}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -183,8 +192,15 @@ handle_call({authenticate,User,Pass,Address}, {Pid,_}, State) ->
 
 handle_call(channelstates, 
 	    _From, 
-	    State) ->
-    {reply, erlmur_channels:all_channel_states(), State};
+	    State = #state{channels=Channels}) ->
+    ChannelStates = lists:reverse(
+		      dict:fold(
+			fun(_Key,Channel, Acc) -> 
+				[{channelstate,[{permissions,permissions(user,Channel#channel.channel_id)}|record_info:record_to_proplist(Channel, ?MODULE)]}|Acc] 
+			end,
+			[], 
+			Channels)),
+    {reply, ChannelStates, State};
 
 handle_call(userstates, 
 	    _From, 
@@ -215,12 +231,15 @@ handle_call({serversync,Session}, {_Pid,_}, State) ->
       {welcome_text, <<"Welcome to Erlmur.">>}], 
      State};
 
-handle_call({permissionquery,Perm}, {Pid,_}, S) ->
-    ChannelId = proplists:get_value(channel_id,Perm),
-    [Channel] = erlmur_channels:find_by_id(ChannelId),
-    User = erlmur_users:fetch_user({client_pid,Pid}),
-    Permissions = erlmur_channels:permissions(Channel,User),
-    NewPerm = lists:keyreplace(permissions, 1, Perm, {permissions,Permissions}),
+handle_call({permissionquery,Perm}, {Pid,_}, S = #state{channels=Channels}) ->
+    NewPerm = case proplists:get_value(channel_id,Perm) of
+		  undefined -> Perm;
+		  ChannelId -> 
+		      Channel = dict:fetch(ChannelId,Channels),
+		      User = erlmur_users:find_user({client_pid,Pid}),
+		      Permissions = permissions(Channel,User),
+		      lists:keyreplace(permissions, 1, Perm, {permissions,Permissions})
+	      end,
     {reply, NewPerm, S};
 
 handle_call(usercount, _From, State) ->
@@ -273,28 +292,32 @@ handle_cast({voice_data,Type,16#00,Pid,Counter,Voice,Positional},State) ->
 		  end, Users),
     {noreply, State};
 
-handle_cast({channelstate,PropList},State) ->
+handle_cast({channelstate,PropList},State = #state{channels=Cs}) ->
     error_logger:info_report([{erlmur_server,handle_cast},{channelstate,PropList}]),
-    case proplists:get_value(channel_id,PropList) of
-	undefined -> erlmur_channels:add(PropList);
-	_ -> erlmur_channels:update(PropList)
-    end,
-    {noreply, State};
+    Id = proplists:get_value(channel_id,PropList),
+    Name = proplists:get_value(name,PropList),
+    Parent = proplists:get_value(parent,PropList),
+    {NewChannel,NewFields} = maybe_new_channel(Cs,Id,Parent,Name),
+    {UpdatedChannel,UpdatedFields} = maybe_update_channel(NewChannel,PropList),
+    notify_if_changed(NewFields++UpdatedFields),
+    NewCs = dict:store(UpdatedChannel#channel.channel_id, UpdatedChannel, Cs),
+    {noreply, State#state{channels=NewCs}};
 
-handle_cast({channelremove,Channel,Actor},State) ->
-    erlmur_channels:remove(
-      erlmur_channels:find_by_id(
-	proplists:get_value(channel_id,Channel)),Actor),
-    {noreply, State};
+handle_cast({channelremove,Channel,Actor},State = #state{channels=Channels}) ->
+    ChannelId = proplists:get_value(channel_id,Channel),
+    NewChannels = remove_channel(ChannelId,Channels),
+    {noreply, State#state{channels=NewChannels}};
 
 handle_cast({userremove,UserRemove}, State) ->
     error_logger:info_report([{erlmur_server,handle_cast},{userremove,UserRemove}]),
-    User = erlmur_users:fetch_user({session,proplists:get_value(session,UserRemove)}),
-    erlmur_users:remove(User,
-			proplists:get_value(actor,UserRemove),
-			proplists:get_value(reason,UserRemove),
-			proplists:get_value(ban,UserRemove)),
-    erlmur_client:stop(erlmur_users:client_pid(User)),
+    Users = erlmur_users:find_user({session,proplists:get_value(session,UserRemove)}),
+    lists:foreach(fun(U) ->
+			 erlmur_users:remove(U,
+					     proplists:get_value(actor,UserRemove),
+					     proplists:get_value(reason,UserRemove),
+					     proplists:get_value(ban,UserRemove)),
+			 erlmur_client:stop(erlmur_users:client_pid(U))
+		 end, Users),
     {noreply, State};
 
 handle_cast(Msg, State) ->
@@ -343,4 +366,53 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+new_channel_id(Channels) ->
+    [H|_] = lists:filter(fun(Key) -> not dict:is_key(Key,Channels) end, lists:seq(0,dict:size(Channels))),
+    H.
 
+maybe_new_channel(Channels,undefined,Parent,Name) ->
+    Id = new_channel_id(Channels),
+    {#channel{channel_id=Id,name=Name,parent=Parent},[{channel_id,Id},{parent,Parent},{name,Name}]};
+maybe_new_channel(Channels,Id,_Parent,_Name) ->
+    {dict:fetch(Id,Channels),[{channel_id,Id}]}.
+
+maybe_update_channel(Channel,[]) ->
+    {Channel,[]};
+maybe_update_channel(Channel,[{Key,undefined}|PropList]) ->
+    maybe_update_channel(Channel,PropList);
+maybe_update_channel(Channel,[{Key,[]}|PropList]) ->
+    maybe_update_channel(Channel,PropList);
+maybe_update_channel(Channel,[{Key,Value}|PropList]) ->
+    {NewChannel,Updated} = channel_update(Channel,Key,Value),
+    {UpdatedChannel,ChangedFields} = maybe_update_channel(NewChannel,PropList),
+    if 
+	Updated == false ->
+	    {UpdatedChannel,ChangedFields};
+	Updated == true ->
+	    {UpdatedChannel,[{Key,Value}|ChangedFields]}
+    end.
+
+permissions(_Channel,_User) ->
+    ?PERM_ALL. %?PERM_NONE.
+    
+remove_channel(ChannelId,Channels) ->
+    Channel = dict:fetch(ChannelId,Channels),
+    RemovedSubChannels = dict:fold(fun(Id,Acc) -> remove_channel(Id,Acc) end, Channels, childs(Channel,Channels)),
+    erlmur_channel_feed:notify({removed,ChannelId}),
+    dict:erase(ChannelId,RemovedSubChannels).
+
+childs(Parent,Channels) ->
+    dict:filter(fun(_Key,C) -> C#channel.parent =:= Parent#channel.channel_id end, Channels).
+
+channel_update(Channel,name,Name) ->
+    {Channel#channel{name=Name},Channel#channel.name =/= Name};
+channel_update(Channel,Key,Value) ->
+    {Channel,false}.
+
+notify_if_changed(UpdatedFields) ->
+    case UpdatedFields of
+	[Id] -> 
+	    noting_new;
+	Channels ->
+	    erlmur_channel_feed:notify({update,UpdatedFields})
+    end.

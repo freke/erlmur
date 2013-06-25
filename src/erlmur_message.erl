@@ -169,7 +169,14 @@ unpack(?MSG_BANLIST, Msg) ->
 unpack(?MSG_USERSTATS, Msg) ->
     {userstats, proplist(mumble_pb:decode_userstats(Msg))};
 unpack(?MSG_TEXTMESSAGE, Msg) ->
-    {textmessage, proplist(mumble_pb:decode_textmessage(Msg))}.
+    {textmessage, proplist(mumble_pb:decode_textmessage(Msg))};
+unpack(?MSG_CODECVERSION, Msg) ->
+    {codecversion, proplist(mumble_pb:decode_codecversion(Msg))};
+unpack(?MSG_SERVERCONFIG, Msg) ->
+    {serverconfig, proplist(mumble_pb:decode_serverconfig(Msg))};
+unpack(?MSG_SERVERSYNC, Msg) ->
+    {serversync, proplist(mumble_pb:decode_serversync(Msg))}.
+
 
 
 proplist(Record) ->
@@ -312,7 +319,7 @@ handle_pb(?MSG_VERSION,_Msg,{Pid,_Key,_From}) ->
 handle_pb(?MSG_AUTHENTICATE,Msg,{Pid,Key,{Address,_Port, Cert}}) ->
     {_,U,P,_T,C,_O} = mumble_pb:decode_authenticate(Msg),
     Sid=erlmur_server:authenticate(U,P,Address),
-    CS = erlmur_channels:all_channel_states(), 
+    CS = erlmur_server:channelstates(), 
     lists:foreach(fun(K) ->
 			  R=mumble_pb:encode_channelstate(K),
 			  erlmur_client:send(Pid,encode_message(?MSG_CHANNELSTATE,R))
@@ -391,8 +398,3 @@ handle_pb(Type,Msg,Client) ->
 			       {msg,Msg},
 			       {client,Client}]).
 
-%%--------------------------------------------------------------------
-%% @doc
-%% @spec
-%% @end
-%%--------------------------------------------------------------------

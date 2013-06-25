@@ -92,6 +92,7 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    erlmur_channel_feed:join_feed(self()),
     {ok, #state{stats=erlmur_stats:new()}}.
 
 %%--------------------------------------------------------------------
@@ -189,6 +190,10 @@ handle_info({ssl, From, Msg}, #state{socket=Socket,stats=Stats} = State) ->
     ssl:setopts(Socket, [{active,once}]),
     {noreply, NewState, ?MAX_IDLE_MS};
 
+handle_info({channel_feed,Msg}, #state{socket=Socket} = State) ->
+    handle_channel_feed(Msg, Socket),
+    {noreply, State};
+
 handle_info(timeout,State) ->
     error_logger:info_msg("Timeout! ~p seconds idle~n", ?MAX_IDLE_MS/1000),
     {stop, normal, State};
@@ -275,7 +280,7 @@ handle_control_msg([{permissionquery,Prop}|Rest],State=#state{socket=Socket}) ->
     ssl:send(Socket,R),
     handle_control_msg(Rest,State);
 handle_control_msg([{userstate,Prop}|Rest],State) ->
-    User = erlmur_users:fetch_user({client_pid,self()}),
+    [User] = erlmur_users:find_user({client_pid,self()}),
     erlmur_users:update(Prop,User,User),
     handle_control_msg(Rest,State);
 handle_control_msg([{userstats,Prop}|Rest],State=#state{socket=Socket,stats=Stats}) ->
@@ -294,9 +299,12 @@ handle_control_msg([{userstats,Prop}|Rest],State=#state{socket=Socket,stats=Stat
     ssl:send(Socket,erlmur_message:pack({userstats,S})),
     handle_control_msg(Rest,State);
 handle_control_msg([{userremove,Prop}|Rest],State) ->
-    User = erlmur_users:fetch_user({client_pid,self()}),
-    Remove = lists:keyreplace(actor, 1, Prop, {actor,erlmur_users:id(User)}),
-    erlmur_server:userremove(Remove),
+    Users = erlmur_users:find_user({client_pid,self()}),
+    lists:foreach(fun (U) ->
+			  Remove = lists:keyreplace(actor, 1, Prop, {actor,erlmur_users:id(U)}),
+			  erlmur_server:userremove(Remove)
+		  end,
+		  Users),
     handle_control_msg(Rest,State);
 handle_control_msg([{channelstate,Prop}|Rest],State) ->
     erlmur_server:channelstate(Prop),
@@ -370,6 +378,11 @@ handle_control_msg([{textmessage,Prop}|Rest], State=#state{socket=Socket}) ->
     send_to(lists:append(DirectTo,Users),{textmessage,Msg}),
     handle_control_msg(Rest,State).
 
+handle_channel_feed({update,Fields}, Socket) ->
+    error_logger:info_report([{erlmur_client,handle_channel_feed},Fields]),
+    Msg = erlmur_message:pack({channelstate,Fields}),
+    ssl:send(Socket,Msg).
+
 send_codecversion(C, Socket) ->
     erlmur_server:codecversion(C),
     V=erlmur_message:pack({codecversion,erlmur_server:codecversion()}),
@@ -387,9 +400,8 @@ send_all_user_states(Socket,Actor) ->
     send_all(Socket,US).
 
 send_all_channel_states(Socket) ->
-    CS = erlmur_channels:all_channel_states(),
-    error_logger:info_report([{erlmur_client,send_all_channels_states},
-			      {channel_states,CS}]),
+    CS = erlmur_server:channelstates(),
+    error_logger:info_report([{erlmur_client,send_all_channels_states},{channel_states,CS}]),
     send_all(Socket,CS).
 
 send_all(Socket,Msg) ->

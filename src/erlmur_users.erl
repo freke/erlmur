@@ -333,5 +333,4 @@ userstate(User,Actor) ->
 userremove(User,undefined,Reason,Ban) ->
     {userremove,[{reason,Reason},{ban,Ban}|record_info:record_to_proplist(User, ?MODULE)]};
 userremove(User,Actor,Reason,Ban) ->
-    ActorId = id(Actor),
-    {userremove,[{reason,Reason},{actor,ActorId},{ban,Ban}|record_info:record_to_proplist(User, ?MODULE)]}.
+    {userremove,[{reason,Reason},{actor,Actor},{ban,Ban}|record_info:record_to_proplist(User, ?MODULE)]}.
