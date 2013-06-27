@@ -294,18 +294,19 @@ handle_cast({voice_data,Type,16#00,Pid,Counter,Voice,Positional},State) ->
 
 handle_cast({channelstate,PropList},State = #state{channels=Cs}) ->
     error_logger:info_report([{erlmur_server,handle_cast},{channelstate,PropList}]),
-    Id = proplists:get_value(channel_id,PropList),
-    Name = proplists:get_value(name,PropList),
-    Parent = proplists:get_value(parent,PropList),
-    {NewChannel,NewFields} = maybe_new_channel(Cs,Id,Parent,Name),
-    {UpdatedChannel,UpdatedFields} = maybe_update_channel(NewChannel,PropList),
-    notify_if_changed(NewFields++UpdatedFields),
-    NewCs = dict:store(UpdatedChannel#channel.channel_id, UpdatedChannel, Cs),
-    {noreply, State#state{channels=NewCs}};
+    {value,{channel_id,Id},Prop} = lists:keytake(channel_id,1,PropList),
+    FilterdProp = lists:filter(fun(E) -> filter_remove_default(channelstate,E) end, Prop),
+    {UpdatedChannel,UpdatedFields} = maybe_update_channel(new_or_fetch_channel(Cs,Id),FilterdProp),
+    ChannelId = UpdatedChannel#channel.channel_id,
+    notify_if_changed(ChannelId,UpdatedFields),
+    {noreply, State#state{channels=dict:store(ChannelId, UpdatedChannel, Cs)}};
 
-handle_cast({channelremove,Channel,Actor},State = #state{channels=Channels}) ->
-    ChannelId = proplists:get_value(channel_id,Channel),
-    NewChannels = remove_channel(ChannelId,Channels),
+handle_cast({channelremove,PropList,Actor},State = #state{channels=Channels}) ->
+    ChannelId = proplists:get_value(channel_id,PropList),
+    Channel = dict:fetch(ChannelId,Channels),
+    ChannelsToRemove = subtree(Channel,Channels),
+    NewChannels = lists:foldl(fun(E,Acc) -> dict:erase(E#channel.channel_id,Acc) end, Channels, ChannelsToRemove),
+    notify_removed(ChannelsToRemove),
     {noreply, State#state{channels=NewChannels}};
 
 handle_cast({userremove,UserRemove}, State) ->
@@ -366,53 +367,79 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-new_channel_id(Channels) ->
-    [H|_] = lists:filter(fun(Key) -> not dict:is_key(Key,Channels) end, lists:seq(0,dict:size(Channels))),
-    H.
+filter_remove_default(_,{_,undefined}) -> false;
+filter_remove_default(_,{_,[]}) -> false;
+filter_remove_default(_,_) -> true.
 
-maybe_new_channel(Channels,undefined,Parent,Name) ->
+new_channel_id(Channels) ->
+    head(filter(fun(Key) -> not dict:is_key(Key,Channels) end, integers())).
+
+new_or_fetch_channel(Channels,undefined) ->
     Id = new_channel_id(Channels),
-    {#channel{channel_id=Id,name=Name,parent=Parent},[{channel_id,Id},{parent,Parent},{name,Name}]};
-maybe_new_channel(Channels,Id,_Parent,_Name) ->
-    {dict:fetch(Id,Channels),[{channel_id,Id}]}.
+    #channel{channel_id=Id};
+new_or_fetch_channel(Channels,Id) ->
+    dict:fetch(Id,Channels).
 
 maybe_update_channel(Channel,[]) ->
     {Channel,[]};
-maybe_update_channel(Channel,[{Key,undefined}|PropList]) ->
-    maybe_update_channel(Channel,PropList);
-maybe_update_channel(Channel,[{Key,[]}|PropList]) ->
-    maybe_update_channel(Channel,PropList);
-maybe_update_channel(Channel,[{Key,Value}|PropList]) ->
-    {NewChannel,Updated} = channel_update(Channel,Key,Value),
-    {UpdatedChannel,ChangedFields} = maybe_update_channel(NewChannel,PropList),
-    if 
-	Updated == false ->
-	    {UpdatedChannel,ChangedFields};
-	Updated == true ->
-	    {UpdatedChannel,[{Key,Value}|ChangedFields]}
-    end.
+maybe_update_channel(Channel,UpdatedFields) ->
+    lists:foldl(fun({Key,Value},{C,F}) -> 
+			case channel_update(C,Key,Value) of
+			    {NewC,true} -> {NewC,[{Key,Value}|F]};
+			    {C,false} -> {C,F}
+			end
+		end,
+		{Channel,[]},UpdatedFields).
 
 permissions(_Channel,_User) ->
     ?PERM_ALL. %?PERM_NONE.
     
-remove_channel(ChannelId,Channels) ->
-    Channel = dict:fetch(ChannelId,Channels),
-    RemovedSubChannels = dict:fold(fun(Id,Acc) -> remove_channel(Id,Acc) end, Channels, childs(Channel,Channels)),
-    erlmur_channel_feed:notify({removed,ChannelId}),
-    dict:erase(ChannelId,RemovedSubChannels).
-
 childs(Parent,Channels) ->
     dict:filter(fun(_Key,C) -> C#channel.parent =:= Parent#channel.channel_id end, Channels).
 
+subtree(Parent,Channels) ->
+    NewChilds = dict:fold(fun(_Key,Value,Acc) -> [Value|Acc] end,[],childs(Parent,Channels)),
+    subtree(Channels,NewChilds,[Parent]).
+
+subtree(_Channels,[],Acc) ->
+    Acc;
+subtree(Channels,[C|Cs],Acc) ->
+    NewChilds = dict:fold(fun(_Key,Value,Acc) -> [Value|Acc] end,[],childs(C,Channels)),
+    subtree(Channels,Cs++NewChilds,[C|Acc]).
+
 channel_update(Channel,name,Name) ->
     {Channel#channel{name=Name},Channel#channel.name =/= Name};
+channel_update(Channel,parent,Parent) ->
+    {Channel#channel{parent=Parent},Channel#channel.parent =/= Parent};
 channel_update(Channel,Key,Value) ->
     {Channel,false}.
 
-notify_if_changed(UpdatedFields) ->
-    case UpdatedFields of
-	[Id] -> 
-	    noting_new;
-	Channels ->
-	    erlmur_channel_feed:notify({update,UpdatedFields})
+notify_removed([]) ->
+    ok;
+notify_removed([Channel|Channels]) ->
+    erlmur_channel_feed:notify({removed,[{channel_id,Channel#channel.channel_id}]}).
+
+notify_if_changed(Id,[]) ->
+    noting_new;
+notify_if_changed(Id,UpdatedFields) ->
+    erlmur_channel_feed:notify({update,[{channel_id,Id}|UpdatedFields]}).
+
+%%% Stream of integers %%%
+integers() -> advance(1, fun(N) -> N + 1 end).
+
+%%% Lazy filter %%%
+filter(Pred, Stream) ->
+    case Pred(head(Stream)) of
+         true ->
+              cons(head(Stream), fun() -> filter(Pred, next(Stream)) end);
+         false ->
+              filter(Pred, next(Stream))
     end.
+
+cons(Head, NextStream) -> {Head, NextStream}.
+head({Head, _}) -> Head.
+next({_, NextStream}) -> NextStream().
+
+advance(Start, Next) ->
+    cons(Start, fun() -> advance(Next(Start), Next) end).
+

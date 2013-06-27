@@ -305,7 +305,8 @@ userremove_msg_test_case(_Config) ->
 channelstate_msg_test_case(_Config) ->
     Client = start_erlmur_client(),
     send_authenticate(Client),
-    send_channelstate(Client).
+    send_new_channel(Client,[{parent,0},{name,"Test"}]),
+    send_remove_channel(Client,1).
 
 %%--------------------------------------------------------------------
 %% Help functions
@@ -374,10 +375,15 @@ send_userremove({Pid,Socket},{PidToRemove,_}) ->
     Pid ! {ssl, self(), UserRemoveMsg},
     get_replies(Socket,[userremove]).
 
-send_channelstate({Pid,Socket}) ->
-    ChannelStateMsg = erlmur_message:pack({channelstate,[{channel_id,0},{name,"Test"}]}),
+send_new_channel({Pid,Socket},NewChannel) ->
+    ChannelStateMsg = erlmur_message:pack({channelstate,NewChannel}),
     Pid ! {ssl, self(), ChannelStateMsg},
     get_replies(Socket,[channelstate]).
+
+send_remove_channel({Pid,Socket},ChannelId) ->
+    ChannelRemoveMsg = erlmur_message:pack({channelremove,[{channel_id,ChannelId}]}),
+    Pid ! {ssl, self(), ChannelRemoveMsg},
+    get_replies(Socket,[channelremove]).
 
 get_replies(_Socket,[]) ->
     ok;

@@ -378,11 +378,15 @@ handle_control_msg([{textmessage,Prop}|Rest], State=#state{socket=Socket}) ->
     send_to(lists:append(DirectTo,Users),{textmessage,Msg}),
     handle_control_msg(Rest,State).
 
-handle_channel_feed({update,Fields}, Socket) ->
-    error_logger:info_report([{erlmur_client,handle_channel_feed},Fields]),
-    Msg = erlmur_message:pack({channelstate,Fields}),
+handle_channel_feed({update,Props}, Socket) ->
+    error_logger:info_report([{erlmur_client,handle_channel_feed},{update,Props}]),
+    Msg = erlmur_message:pack({channelstate,Props}),
+    ssl:send(Socket,Msg);
+handle_channel_feed({removed,Props}, Socket) ->
+    error_logger:info_report([{erlmur_client,handle_channel_feed},{removed,Props}]),
+    Msg = erlmur_message:pack({channelremove,Props}),
     ssl:send(Socket,Msg).
-
+    
 send_codecversion(C, Socket) ->
     erlmur_server:codecversion(C),
     V=erlmur_message:pack({codecversion,erlmur_server:codecversion()}),
