@@ -20,6 +20,9 @@
 	 channelstates/0,
 	 channelstate/1,
 	 channelremove/2,
+	 channel_filter/1,
+	 channel_name/1,
+	 channel_id/1,
 	 userstates/0,
 	 userstate/1,
 	 userremove/1,
@@ -59,7 +62,7 @@
 -define(SERVER, ?MODULE).
 
 -record(channel,{channel_id,parent,name}).
--record(permission,{user,channel}).
+-record(permission,{user,channel,permission}).
 -record(state, {channels}).
 
 -export_record_info([channel]).
@@ -93,6 +96,15 @@ channelstate(ChannelState) ->
 
 channelremove(Channel,Actor) ->
     gen_server:cast(?SERVER,{channelremove,Channel,Actor}).
+
+channel_filter(Filter) ->
+    gen_server:call(?SERVER,{channel_filter,Filter}).
+
+channel_name(Channel) when is_record(Channel,channel) ->
+    Channel#channel.name.
+
+channel_id(Channel) when is_record(Channel,channel) ->
+    Channel#channel.channel_id.
 
 userstates() ->
     gen_server:call(?SERVER,userstates).
@@ -196,7 +208,9 @@ handle_call(channelstates,
     ChannelStates = lists:reverse(
 		      dict:fold(
 			fun(_Key,Channel, Acc) -> 
-				[{channelstate,[{permissions,permissions(user,Channel#channel.channel_id)}|record_info:record_to_proplist(Channel, ?MODULE)]}|Acc] 
+				[{channelstate,[{permissions,permissions(user,Channel#channel.channel_id)}|
+						record_info:record_to_proplist(Channel, ?MODULE)]}
+				 |Acc] 
 			end,
 			[], 
 			Channels)),
@@ -245,6 +259,19 @@ handle_call({permissionquery,Perm}, {Pid,_}, S = #state{channels=Channels}) ->
 handle_call(usercount, _From, State) ->
     NumUsers = proplists:get_value(workers,supervisor:count_children(erlmur_client_sup)),
     {reply, {NumUsers,10}, State};
+
+handle_call({channel_filter,Filter}, _From, S = #state{channels=Channels}) ->
+    FilterdChannels = dict:fold(fun(_K,V,Acc) ->
+					case Filter(V) of
+					    true ->
+						[V|Acc];
+					    false ->
+						Acc
+					end
+				end,
+				[],
+				Channels),
+    {reply,FilterdChannels,S};
 
 handle_call(Request, _From, State) ->
     error_logger:info_report([{erlmur_server,handle_call},{unhandled_request,Request}]),

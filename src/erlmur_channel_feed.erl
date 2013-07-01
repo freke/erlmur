@@ -46,7 +46,7 @@ add_handler() ->
     gen_event:add_handler(?SERVER, ?MODULE, []).
 
 join_feed(Pid) ->
-    HandlerId = {channel_feed, make_ref()},
+    HandlerId = {erlmur_channel_feed, make_ref()},
     gen_event:add_handler(?SERVER, HandlerId, [Pid]),
     HandlerId.
  

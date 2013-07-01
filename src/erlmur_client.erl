@@ -33,7 +33,7 @@
 
 -include_lib("stdlib/include/ms_transform.hrl").
 
--record(state, {socket,cryptkey,udp_port,use_udp_tunnel=true,stats}).
+-record(state, {socket,cryptkey,udp_port,use_udp_tunnel=true,stats,channel_feed}).
 
 %%%===================================================================
 %%% API
@@ -92,8 +92,8 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    erlmur_channel_feed:join_feed(self()),
-    {ok, #state{stats=erlmur_stats:new()}}.
+    ChannelFeed = erlmur_channel_feed:join_feed(self()),
+    {ok, #state{stats=erlmur_stats:new(),channel_feed=ChannelFeed}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -217,7 +217,8 @@ handle_info(Msg, #state{socket=Socket} = State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(_Reason, State = #state{channel_feed=ChannelFeed}) ->
+    erlmur_channel_feed:leave_feed(ChannelFeed),
     ok.
 
 %%--------------------------------------------------------------------
