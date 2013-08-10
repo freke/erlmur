@@ -59,6 +59,7 @@ init_per_suite(Config) ->
     KeyPem = filename:join([DataDir, "key.pem"]),
     application:set_env(erlmur, server_pem, ServerPem),
     application:set_env(erlmur, key_pem, KeyPem),
+    ok = application:start(asn1),
     ok = application:start(crypto),
     ok = application:start(public_key),
     ok = application:start(ssl),
@@ -80,6 +81,7 @@ end_per_suite(_Config) ->
     application:stop(ssl),
     application:stop(public_key),
     application:stop(crypto),
+    application:stop(asn1),
     ok.
 
 %%--------------------------------------------------------------------
