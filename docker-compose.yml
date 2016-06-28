@@ -1,0 +1,20 @@
+version: '2'
+
+services:
+  erlmur:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile_dev
+    ports:
+     - "8000:8000"
+    volumes:
+      - .:/src/erlmur
+      - rebar3:/root/.cache/rebar3
+    working_dir: /src/erlmur
+#    environment:
+#     - DEBUG=1
+    command: rebar3 shell
+
+volumes:
+  rebar3:
+    driver: local

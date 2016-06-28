@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %%% @author David AAberg <davabe@hotmail.com>
-%%% @copyright (C) 2013, 
+%%% @copyright (C) 2013,
 %%% @doc
 %%%
 %%% @end
@@ -188,8 +188,8 @@ handle_call(version, _From, State) ->
 		    V -> V
 		end,
     <<ErlmurVersion:32>> = <<1:16,2:8,3:8>>,
-    {reply, [{version, ErlmurVersion}, 
-	     {release, <<"erlmur">>}, 
+    {reply, [{version, ErlmurVersion},
+	     {release, <<"erlmur">>},
 	     {os, list_to_binary(OsNameString)},
 	     {os_version, list_to_binary(OsVersion)}], State};
 
@@ -202,53 +202,50 @@ handle_call({authenticate,User,Pass,Address}, {Pid,_}, State) ->
     erlmur_monitor_users:monitor_user(Pid),
     {reply, Session, State};
 
-handle_call(channelstates, 
-	    _From, 
+handle_call(channelstates,
+	    _From,
 	    State = #state{channels=Channels}) ->
     ChannelStates = lists:reverse(
 		      dict:fold(
-			fun(_Key,Channel, Acc) -> 
+			fun(_Key,Channel, Acc) ->
 				[{channelstate,[{permissions,permissions(user,Channel#channel.channel_id)}|
 						record_info:record_to_proplist(Channel, ?MODULE)]}
-				 |Acc] 
+				 |Acc]
 			end,
-			[], 
+			[],
 			Channels)),
     {reply, ChannelStates, State};
 
-handle_call(userstates, 
-	    _From, 
-	    State) ->
-    {reply, erlmur_users:all_user_states(), State};
+handle_call(userstates, {Pid,_}, State) ->
+	User = erlmur_users:find_user({client_pid,Pid}),
+  {reply, erlmur_users:all_user_states(User), State};
 
-handle_call(codecversion, 
-	    _From, 
-	    S) ->
-    {reply, 
-     [{alpha, -2147483637}, 
-      {beta, 0}, 
-      {prefer_alpha, true}, 
-      {opus, false}], 
-     S};
+handle_call(codecversion, _From, State) ->
+    {reply,
+     [{alpha, -2147483637},
+      {beta, 0},
+      {prefer_alpha, true},
+      {opus, false}],
+     State};
 
 handle_call(serverconfig, _From, State) ->
-    {reply, 
+    {reply,
      [{max_bandwidth, 240000},
       {allow_html, true},
-      {message_length, 128}], 
+      {message_length, 128}],
      State};
 
 handle_call({serversync,Session}, {_Pid,_}, State) ->
-    {reply, 
+    {reply,
      [{session, Session},
       {max_bandwidth, 240000},
-      {welcome_text, <<"Welcome to Erlmur.">>}], 
+      {welcome_text, <<"Welcome to Erlmur.">>}],
      State};
 
 handle_call({permissionquery,Perm}, {Pid,_}, S = #state{channels=Channels}) ->
     NewPerm = case proplists:get_value(channel_id,Perm) of
 		  undefined -> Perm;
-		  ChannelId -> 
+		  ChannelId ->
 		      Channel = dict:fetch(ChannelId,Channels),
 		      User = erlmur_users:find_user({client_pid,Pid}),
 		      Permissions = permissions(Channel,User),
@@ -315,7 +312,7 @@ handle_cast({voice_data,Type,16#00,Pid,Counter,Voice,Positional},State) ->
 						   EncodedSid/binary,
 						   C/binary,
 						   Voice/binary,
-						   Positional/binary>>) 
+						   Positional/binary>>)
 		  end, Users),
     {noreply, State};
 
@@ -410,7 +407,7 @@ new_or_fetch_channel(Channels,Id) ->
 maybe_update_channel(Channel,[]) ->
     {Channel,[]};
 maybe_update_channel(Channel,UpdatedFields) ->
-    lists:foldl(fun({Key,Value},{C,F}) -> 
+    lists:foldl(fun({Key,Value},{C,F}) ->
 			case channel_update(C,Key,Value) of
 			    {NewC,true} -> {NewC,[{Key,Value}|F]};
 			    {C,false} -> {C,F}
@@ -420,7 +417,7 @@ maybe_update_channel(Channel,UpdatedFields) ->
 
 permissions(_Channel,_User) ->
     ?PERM_ALL. %?PERM_NONE.
-    
+
 childs(Parent,Channels) ->
     dict:filter(fun(_Key,C) -> C#channel.parent =:= Parent#channel.channel_id end, Channels).
 
@@ -441,10 +438,8 @@ channel_update(Channel,parent,Parent) ->
 channel_update(Channel,Key,Value) ->
     {Channel,false}.
 
-notify_removed([]) ->
-    ok;
 notify_removed([Channel|Channels]) ->
-    erlmur_channel_feed:notify({removed,[{channel_id,Channel#channel.channel_id}]}).
+  erlmur_channel_feed:notify({removed,[{channel_id,Channel#channel.channel_id}]}).
 
 notify_if_changed(Id,[]) ->
     noting_new;
@@ -469,4 +464,3 @@ next({_, NextStream}) -> NextStream().
 
 advance(Start, Next) ->
     cons(Start, fun() -> advance(Next(Start), Next) end).
-

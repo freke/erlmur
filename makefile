@@ -1,40 +1,42 @@
-compile: get-deps
-	rebar compile
+PROJECT=erlmur
+DOCKER=docker-compose -f docker-compose.yml run --rm --service-ports $(PROJECT)
+REBAR=$(DOCKER) rebar3
 
-test: compile
-	rebar eunit skip_deps=true
-	rebar ct skip_deps=true
+.PHONY: all compile test clean
 
-get-deps:
-	rebar get-deps
+all: compile test
+
+compile:
+	$(REBAR) compile
+
+test: dialyzer eunit ct
+	$(REBAR) cover
+
+eunit:
+	$(REBAR) eunit
+
+ct:
+	$(REBAR) ct
+
+dialyzer:
+	$(REBAR) dialyzer
+
+release:
+	$(DOCKER) rm -Rf _build/prod
+	$(REBAR) as prod compile
+	$(REBAR) as prod release
+	docker build --pull=true --no-cache=true --force-rm=true -t freke/$(PROJECT):0.0.1 -t freke/$(PROJECT):latest -f docker/Dockerfile_prod .
 
 clean:
-	rebar clean
+	$(REBAR) clean --all
+	$(DOCKER) rm -Rf _build/test/cover
+	$(DOCKER) rm -Rf _build/test/logs
 
-APPS = kernel stdlib sasl erts ssl crypto inets public_key
-COMBO_PLT = $(HOME)/.erlmur_combo_dialyzer_plt
+distclean: clean
+	$(DOCKER) rm -Rf _build
 
-check_plt: compile
-	dialyzer --check_plt --plt $(COMBO_PLT) --apps $(APPS) deps/*/ebin
+upgrade:
+	$(REBAR) upgrade
 
-build_plt: compile
-	dialyzer --build_plt --output_plt $(COMBO_PLT) --apps $(APPS) deps/*/ebin
-
-dialyzer: compile
-	@echo
-	@echo Use "'make check_plt'" to check PLT prior to using this target.
-	@echo Use "'make build_plt'" to build PLT prior to using this target.
-	@echo
-	@sleep 1
-	dialyzer -Wno_return -Wrace_conditions --plt $(COMBO_PLT) deps/*/ebin | fgrep -v -f ./dialyzer.ignore-warnings
-
-cleanplt:
-	@echo
-	@echo "Are you sure? It takes about 1/2 hour to re-build."
-	@echo Deleting $(COMBO_PLT) in 5 seconds.
-	@echo
-	sleep 5
-	rm $(COMBO_PLT)
-
-xref: compile
-	rebar xref skip_deps=true
+shell:
+	$(REBAR) shell

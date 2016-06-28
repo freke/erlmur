@@ -1,5 +1,5 @@
 %%% @author  <>
-%%% @copyright (C) 2013, 
+%%% @copyright (C) 2013,
 %%% @doc
 %%%
 %%% @end
@@ -8,6 +8,8 @@
 -module(erlmur_stats).
 
 -export([new/0, client_ping/2, times/2, packets/2, server_ping/1, stats/1]).
+
+-include_lib("record_info/include/record_info.hrl").
 
 -record(ping_stats, {good=0,late=0,lost=0,resync=0}).
 -record(stats, {server_ping=#ping_stats{},
@@ -20,8 +22,6 @@
 		tcp_ping_var=0,
 		onlinesecs=0,
 		idlesecs=0}).
-
--include_lib("record_info/include/record_info.hrl").
 
 -export_record_info([stats]).
 
@@ -50,4 +50,3 @@ server_ping(Stats) ->
 
 stats(Stats) ->
     [{stats_only,true}|record_info:record_to_proplist(Stats, ?MODULE)].
-

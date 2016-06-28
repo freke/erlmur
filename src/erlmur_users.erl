@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %%% @author David AAberg <davabe@hotmail.com>
-%%% @copyright (C) 2013, 
+%%% @copyright (C) 2013,
 %%% @doc
 %%%
 %%% @end
@@ -101,7 +101,7 @@ all_user_states(Actor) ->
     F = fun() ->
 		mnesia:foldl(fun(User,Acc) -> [userstate(User,Actor)|Acc] end, [], user)
 	end,
-    mnesia:activity(transaction, F).
+  mnesia:activity(transaction, F).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -288,10 +288,10 @@ move_to_channel(User,ChannelId,Actor) ->
 %%--------------------------------------------------------------------
 send_to_all(Msg) ->
     F = fun() ->
-		mnesia:foldl(fun(#user{client_pid=P},_) -> 
+		mnesia:foldl(fun(#user{client_pid=P},_) ->
 				     P ! Msg
-			     end, 
-			     [], 
+			     end,
+			     [],
 			     user)
 	end,
     mnesia:activity(transaction, F).

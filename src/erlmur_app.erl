@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %%% @author David AAberg <davabe@hotmail.com>
-%%% @copyright (C) 2013, 
+%%% @copyright (C) 2013,
 %%% @doc
 %%%
 %%% @end
@@ -20,11 +20,10 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    erlmur_sup:start_link().
+  erlmur_sup:start_link().
 
 stop(_State) ->
-    ok.
+  ok.
 
 start_client() ->
-    supervisor:start_child(erlmur_client_sup, []).
-
+  supervisor:start_child(erlmur_client_sup, []).

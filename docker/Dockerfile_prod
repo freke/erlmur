@@ -1,0 +1,12 @@
+FROM alpine:latest
+
+RUN sed -i -e 's/v3\.2/edge/g' /etc/apk/repositories && echo "http://dl-4.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories && apk update && apk upgrade --available
+RUN apk add --update-cache ncurses-dev
+
+RUN rm -rf /var/cache/apk/*
+
+RUN echo -en '\n' > ~/.hosts.erlang
+
+ADD _build/prod/ /
+
+ENTRYPOINT /rel/erlmur/bin/erlmur foreground

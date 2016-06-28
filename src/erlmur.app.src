@@ -1,15 +1,19 @@
 {application, erlmur,
- [
-  {description, ""},
-  {vsn, "1"},
-  {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib,
-		  crypto,
-		  ssl,
-		  mnesia
-                 ]},
-  {mod, { erlmur_app, []}},
-  {env, []}
- ]}.
+  [
+    {description, ""},
+    {vsn, "1"},
+    {registered, []},
+    {applications,
+      [
+        kernel,
+        stdlib,
+        crypto,
+        ssl,
+        mnesia,
+        ocb128_crypto
+      ]
+    },
+    {mod, { erlmur_app, []}},
+    {env, []}
+  ]
+}.

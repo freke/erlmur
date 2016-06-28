@@ -1,5 +1,5 @@
 %%% @author David AAberg <davabe@hotmail.com>
-%%% @copyright (C) 2013, 
+%%% @copyright (C) 2013,
 %%% @doc
 %%%
 %%% @end
@@ -7,28 +7,42 @@
 
 -module(erlmur_message).
 
--export([pack/1,data_msg/1,control_msg/1,unpack/2,version/1,userremove/1,userstate/1,channelstate/1,channelremove/1,proplist/1]).
+-export(
+	[
+		pack/1,
+		data_msg/1,
+		control_msg/1,
+		unpack/2,
+		version/1,
+		userremove/1,
+		userstate/1,
+		channelstate/1,
+		channelremove/1,
+		proplist/1
+	]).
 
--include("mumble_pb.hrl").
+-include("mumble_gpb.hrl").
 -include_lib("record_info/include/record_info.hrl").
 
--export_record_info([authenticate,
-		     ping,
-		     cryptsetup,
-		     serversync,
-		     version,
-		     userstate,
-		     userremove,
-		     userlist,
-		     userstats,
-		     banlist,
-		     codecversion,
-		     serverconfig,
-		     channelstate,
-		     permissionquery,
-		     channelstate,
-		     channelremove,
-		     textmessage]).
+-export_record_info(
+	[
+		'Authenticate',
+		'Ping',
+		'CryptSetup',
+		'ServerSync',
+		'Version',
+		'UserState',
+		'UserRemove',
+		'UserList',
+		'UserStats',
+		'BanList',
+		'CodecVersion',
+		'ServerConfig',
+		'PermissionQuery',
+		'ChannelState',
+		'ChannelRemove',
+    'TextMessage'
+	]).
 
 %% 0
 -define(MSG_VERSION, 16#00).
@@ -62,71 +76,70 @@
 
 pack({authenticate,PropList}) ->
     A = authenticate(PropList),
-    R = mumble_pb:encode_authenticate(A),
+    R = mumble_gpb:encode_msg(A),
     encode_message(?MSG_AUTHENTICATE,R);
 pack({ping,PropList}) ->
     V = ping(PropList),
-    R = mumble_pb:encode_ping(V),
+    R = mumble_gpb:encode_msg(V),
     encode_message(?MSG_PING,R);
 pack({version,PropList}) ->
     V = version(PropList),
-    R = mumble_pb:encode_version(V),
+    R = mumble_gpb:encode_msg(V),
     encode_message(?MSG_VERSION,R);
 pack({userstate,PropList}) ->
     US = userstate(PropList),
-    R = mumble_pb:encode_userstate(US),
+    R = mumble_gpb:encode_msg(US),
     encode_message(?MSG_USERSTATE,R);
 pack({userstats,PropList}) ->
     US = userstats(PropList),
-    R = mumble_pb:encode_userstats(US),
+    R = mumble_gpb:encode_msg(US),
     encode_message(?MSG_USERSTATS,R);
 pack({channelstate,PropList}) ->
     CS = channelstate(PropList),
-    R = mumble_pb:encode_channelstate(CS),
+    R = mumble_gpb:encode_msg(CS),
     encode_message(?MSG_CHANNELSTATE,R);
 pack({channelremove,PropList}) ->
     CR = channelremove(PropList),
-    R = mumble_pb:encode_channelremove(CR),
+    R = mumble_gpb:encode_msg(CR),
     encode_message(?MSG_CHANNELREMOVE,R);
 pack({userremove,PropList}) ->
     UR = userremove(PropList),
-    R = mumble_pb:encode_userremove(UR),
+    R = mumble_gpb:encode_msg(UR),
     encode_message(?MSG_USERREMOVE,R);
 pack({userlist,Users}) ->
-    U = lists:map(fun({Id,Name}) -> #userlist_user{user_id=Id,name=Name} end, Users),
-    R = mumble_pb:encode_userlist(#userlist{users=U}),
+    U = lists:map(fun({Id,Name}) -> #'UserList.User'{user_id=Id,name=Name} end, Users),
+    R = mumble_gpb:encode_msg(#'UserList'{users=U}),
     encode_message(?MSG_USERLIST,R);
 pack({banlist,Users}) ->
-    U = lists:map(fun({Id,Name}) -> #userlist_user{user_id=Id,name=Name} end, Users),
-    R = mumble_pb:encode_banlist(#banlist{bans=U}),
+    U = lists:map(fun({Id,Name}) -> #'UserList.User'{user_id=Id,name=Name} end, Users),
+    R = mumble_gpb:encode_msg(#'BanList'{bans=U}),
     encode_message(?MSG_BANLIST,R);
 pack({cryptsetup,PropList}) ->
     CS = cryptsetup(PropList),
-    R = mumble_pb:encode_cryptsetup(CS),
+    R = mumble_gpb:encode_msg(CS),
     encode_message(?MSG_CRYPTSETUP,R);
 pack({codecversion,PropList}) ->
     CV = codecversion(PropList),
-    R = mumble_pb:encode_codecversion(CV),
+    R = mumble_gpb:encode_msg(CV),
     encode_message(?MSG_CODECVERSION,R);
 pack({serverconfig,PropList}) ->
     SC = serverconfig(PropList),
-    R = mumble_pb:encode_serverconfig(SC),
+    R = mumble_gpb:encode_msg(SC),
     encode_message(?MSG_SERVERCONFIG,R);
 pack({serversync,PropList}) ->
     SS = serversync(PropList),
-    R = mumble_pb:encode_serversync(SS),
+    R = mumble_gpb:encode_msg(SS),
     encode_message(?MSG_SERVERSYNC,R);
 pack({permissionquery,PropList}) ->
     PQ = permissionquery(PropList),
-    R = mumble_pb:encode_permissionquery(PQ),
+    R = mumble_gpb:encode_msg(PQ),
     encode_message(?MSG_PERMISSIONQUERY,R);
 pack({udp_tunnel,Data}) ->
     encode_message(?MSG_UDPTUNNEL,Data);
 pack({textmessage,PropList}) ->
     TM = textmessage(PropList),
-    R = mumble_pb:encode_textmessage(TM),
+    R = mumble_gpb:encode_msg(TM),
     encode_message(?MSG_TEXTMESSAGE,R).
-    
 
 data_msg(<<1:3,0:5,_Timestamp/binary>> = PingMsg) ->
     PingMsg;
@@ -141,39 +154,39 @@ control_msg(<<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer, Msg:Len
     [{Type,Msg}|control_msg(Rest)].
 
 unpack(?MSG_VERSION,Msg) ->
-    {version, proplist(mumble_pb:decode_version(Msg))};
+    {version, proplist(mumble_gpb:decode_msg(Msg, 'Version'))};
 unpack(?MSG_AUTHENTICATE,Msg) ->
-    {authenticate, proplist(mumble_pb:decode_authenticate(Msg))};
+    {authenticate, proplist(mumble_gpb:decode_msg(Msg, 'Authenticate'))};
 unpack(?MSG_PERMISSIONQUERY,Msg) ->
-    {permissionquery, proplist(mumble_pb:decode_permissionquery(Msg))};
+    {permissionquery, proplist(mumble_gpb:decode_msg(Msg, 'PermissionQuery'))};
 unpack(?MSG_PING,Msg) ->
-    {ping, proplist(mumble_pb:decode_ping(Msg))};
+    {ping, proplist(mumble_gpb:decode_msg(Msg, 'Ping'))};
 unpack(?MSG_CRYPTSETUP,Msg) ->
-    {cryptsetup, proplist(mumble_pb:decode_cryptsetup(Msg))};
+    {cryptsetup, proplist(mumble_gpb:decode_msg(Msg, 'CryptSetup'))};
 unpack(?MSG_UDPTUNNEL, Msg) ->
     {udptunnel, Msg};
 unpack(?MSG_CHANNELSTATE, Msg) ->
-    {channelstate, proplist(mumble_pb:decode_channelstate(Msg))};
+    {channelstate, proplist(mumble_gpb:decode_msg(Msg, 'ChannelState'))};
 unpack(?MSG_CHANNELREMOVE, Msg) ->
-    {channelremove, proplist(mumble_pb:decode_channelremove(Msg))};
+    {channelremove, proplist(mumble_gpb:decode_msg(Msg, 'ChannelRemove'))};
 unpack(?MSG_USERSTATE, Msg) ->
-    {userstate, proplist(mumble_pb:decode_userstate(Msg))};
+    {userstate, proplist(mumble_gpb:decode_msg(Msg, 'UserState'))};
 unpack(?MSG_USERREMOVE, Msg) ->
-    {userremove, proplist(mumble_pb:decode_userremove(Msg))};
+    {userremove, proplist(mumble_gpb:decode_msg(Msg, 'UserRemove'))};
 unpack(?MSG_USERLIST, Msg) ->
-    {userlist, proplist(mumble_pb:decode_userlist(Msg))};
+    {userlist, proplist(mumble_gpb:decode_msg(Msg, 'UserList'))};
 unpack(?MSG_BANLIST, Msg) ->
-    {banlist, proplist(mumble_pb:decode_banlist(Msg))};
+    {banlist, proplist(mumble_gpb:decode_msg(Msg, 'BanList'))};
 unpack(?MSG_USERSTATS, Msg) ->
-    {userstats, proplist(mumble_pb:decode_userstats(Msg))};
+    {userstats, proplist(mumble_gpb:decode_msg(Msg, 'UserStats'))};
 unpack(?MSG_TEXTMESSAGE, Msg) ->
-    {textmessage, proplist(mumble_pb:decode_textmessage(Msg))};
+    {textmessage, proplist(mumble_gpb:decode_msg(Msg, 'TextMessage'))};
 unpack(?MSG_CODECVERSION, Msg) ->
-    {codecversion, proplist(mumble_pb:decode_codecversion(Msg))};
+    {codecversion, proplist(mumble_gpb:decode_msg(Msg, 'CodecVersion'))};
 unpack(?MSG_SERVERCONFIG, Msg) ->
-    {serverconfig, proplist(mumble_pb:decode_serverconfig(Msg))};
+    {serverconfig, proplist(mumble_gpb:decode_msg(Msg, 'ServerConfig'))};
 unpack(?MSG_SERVERSYNC, Msg) ->
-    {serversync, proplist(mumble_pb:decode_serversync(Msg))}.
+    {serversync, proplist(mumble_gpb:decode_msg(Msg, 'ServerSync'))}.
 
 
 
@@ -181,46 +194,46 @@ proplist(Record) ->
     record_info:record_to_proplist(Record, ?MODULE).
 
 authenticate(PropList) ->
-    record_info:proplist_to_record(PropList, authenticate, ?MODULE).
+    record_info:proplist_to_record(PropList, 'Authenticate', ?MODULE).
 
 ping(PropList) ->
-    record_info:proplist_to_record(PropList, ping, ?MODULE).
+    record_info:proplist_to_record(PropList, 'Ping', ?MODULE).
 
 version(PropList) ->
-    record_info:proplist_to_record(PropList, version, ?MODULE).
+    record_info:proplist_to_record(PropList, 'Version', ?MODULE).
 
 userstate(PropList) ->
-    record_info:proplist_to_record(PropList, userstate, ?MODULE).
+    record_info:proplist_to_record(PropList, 'UserState', ?MODULE).
 
 userstats(PropList) ->
-    record_info:proplist_to_record(PropList, userstats, ?MODULE).
+    record_info:proplist_to_record(PropList, 'UserStats', ?MODULE).
 
 userremove(PropList) ->
-    record_info:proplist_to_record(PropList, userremove, ?MODULE).
+    record_info:proplist_to_record(PropList, 'UserRemove', ?MODULE).
 
 channelstate(PropList) ->
-    record_info:proplist_to_record(PropList, channelstate, ?MODULE).
+    record_info:proplist_to_record(PropList, 'ChannelState', ?MODULE).
 
 channelremove(PropList) ->
-    record_info:proplist_to_record(PropList, channelremove, ?MODULE).
+    record_info:proplist_to_record(PropList, 'ChannelRemove', ?MODULE).
 
 cryptsetup(PropList) ->
-    record_info:proplist_to_record(PropList, cryptsetup, ?MODULE).
+    record_info:proplist_to_record(PropList, 'CryptSetup', ?MODULE).
 
 codecversion(PropList) ->
-    record_info:proplist_to_record(PropList, codecversion, ?MODULE).
+    record_info:proplist_to_record(PropList, 'CodecVersion', ?MODULE).
 
 serverconfig(PropList) ->
-    record_info:proplist_to_record(PropList, serverconfig, ?MODULE).
+    record_info:proplist_to_record(PropList, 'ServerConfig', ?MODULE).
 
 serversync(PropList) ->
-    record_info:proplist_to_record(PropList, serversync, ?MODULE).
+    record_info:proplist_to_record(PropList, 'ServerSync', ?MODULE).
 
 permissionquery(PropList) ->
-    record_info:proplist_to_record(PropList, permissionquery, ?MODULE).
+    record_info:proplist_to_record(PropList, 'PermissionQuery', ?MODULE).
 
 textmessage(PropList) ->
-    record_info:proplist_to_record(PropList, textmessage, ?MODULE).
+    record_info:proplist_to_record(PropList, 'TextMessage', ?MODULE).
 
 encode_message(Type, Msg) when is_list(Msg) ->
     encode_message(Type, erlang:iolist_to_binary(Msg));
@@ -238,5 +251,3 @@ split_voice_positional(<<1:1,Len:7,V1:Len/binary,Rest/binary>>) ->
     {<<1:1,Len:7,V1:Len/binary,V2/binary>>,R1};
 split_voice_positional(<<0:1,Len:7,V:Len/binary,Rest/binary>>) ->
     {<<0:1,Len:7,V:Len/binary>>,Rest}.
-
-

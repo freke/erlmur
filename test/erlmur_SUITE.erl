@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %%% @author  <>
-%%% @copyright (C) 2013, 
+%%% @copyright (C) 2013,
 %%% @doc
 %%%
 %%% @end
@@ -12,7 +12,7 @@
 -compile(export_all).
 
 -include_lib("common_test/include/ct.hrl").
--include("mumble_pb.hrl").
+-include("mumble_gpb.hrl").
 
 %%--------------------------------------------------------------------
 %% COMMON TEST CALLBACK FUNCTIONS
@@ -54,17 +54,14 @@ suite() ->
 %% @end
 %%--------------------------------------------------------------------
 init_per_suite(Config) ->
-    DataDir = ?config(data_dir, Config),
-    ServerPem = filename:join([DataDir, "server.pem"]),
-    KeyPem = filename:join([DataDir, "key.pem"]),
-    application:set_env(erlmur, server_pem, ServerPem),
-    application:set_env(erlmur, key_pem, KeyPem),
-    ok = application:start(asn1),
-    ok = application:start(crypto),
-    ok = application:start(public_key),
-    ok = application:start(ssl),
-    ok = application:start(mnesia),
-    Config.
+  DataDir = ?config(data_dir, Config),
+  ServerPem = filename:join([DataDir, "server.pem"]),
+  KeyPem = filename:join([DataDir, "key.pem"]),
+  application:set_env(erlmur, server_pem, ServerPem),
+  application:set_env(erlmur, key_pem, KeyPem),
+  ok = application:start(mnesia),
+  ok = application:start(ocb128_crypto),
+  Config.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -77,12 +74,9 @@ init_per_suite(Config) ->
 %% @end
 %%--------------------------------------------------------------------
 end_per_suite(_Config) ->
-    application:stop(mnesia),
-    application:stop(ssl),
-    application:stop(public_key),
-    application:stop(crypto),
-    application:stop(asn1),
-    ok.
+  application:stop(ocb128_crypto),
+  application:stop(mnesia),
+  ok.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -201,9 +195,9 @@ groups() ->
 %% @spec all() -> GroupsAndTestCases | {skip,Reason}
 %% @end
 %%--------------------------------------------------------------------
-all() -> 
-    [version_msg_test_case, 
-     authenticate_msg_test_case, 
+all() ->
+    [version_msg_test_case,
+     authenticate_msg_test_case,
      ping_msg_test_case,
      permissionquery_msg_test_case,
      userstate_msg_test_case,
@@ -217,7 +211,7 @@ all() ->
 %%--------------------------------------------------------------------
 
 %%--------------------------------------------------------------------
-%% @doc 
+%% @doc
 %%  Test case info function - returns list of tuples to set
 %%  properties for the test case.
 %%
@@ -227,10 +221,10 @@ all() ->
 %% Note: This function is only meant to be used to return a list of
 %% values, not perform any other operations.
 %%
-%% @spec TestCase() -> Info 
+%% @spec TestCase() -> Info
 %% @end
 %%--------------------------------------------------------------------
-version_msg_test_case() -> 
+version_msg_test_case() ->
     [].
 
 authenticate_msg_test_case() ->

@@ -1,0 +1,16 @@
+FROM alpine:latest
+
+RUN sed -i -e 's/v3\.2/edge/g' /etc/apk/repositories && echo "http://dl-4.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories && apk update && apk upgrade --available
+RUN apk add --update-cache build-base git bash file
+RUN apk add --update-cache erlang erlang-webtool erlang-kernel erlang-cosfiletransfer erlang-cosnotification erlang-xmerl erlang-runtime-tools erlang-coseventdomain erlang-erl-docgen erlang-dialyzer erlang-reltool erlang-os-mon erlang-compiler erlang-ssh erlang-ose erlang-inets erlang-observer erlang-ssl erlang-diameter erlang-orber erlang-sasl erlang-typer erlang-snmp erlang-ic erlang-percept erlang-erl-interface erlang-syntax-tools erlang-debugger erlang-tools erlang-et erlang-otp-mibs erlang-crypto erlang-costransaction erlang-gs erlang-megaco erlang-asn1 erlang-mnesia erlang-cosproperty erlang-eunit erlang-hipe erlang-common-test erlang-dev erlang-cosevent erlang-stdlib erlang-erts erlang-parsetools erlang-costime erlang-odbc erlang-edoc erlang-public-key erlang-test-server erlang-jinterface erlang-eldap
+RUN apk add --update-cache openssl-dev
+
+RUN rm -rf /var/cache/apk/*
+
+RUN mkdir /opt
+WORKDIR /opt
+
+RUN echo -en '\n' > ~/.hosts.erlang
+
+RUN rm -fr ~/.cache/rebar3 _build
+RUN git clone https://github.com/erlang/rebar3.git && cd rebar3 && ./bootstrap && ln -s /opt/rebar3/rebar3 /bin/rebar3
