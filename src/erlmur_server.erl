@@ -14,30 +14,40 @@
 -include_lib("record_info/include/record_info.hrl").
 
 %% API
--export([start_link/0,
-	 version/0,
-	 authenticate/3,
-	 channelstates/0,
-	 channelstate/1,
-	 channelremove/2,
-	 channel_filter/1,
-	 channel_name/1,
-	 channel_id/1,
-	 userstates/0,
-	 userstate/1,
-	 userremove/1,
-	 codecversion/0,
-	 codecversion/1,
-	 serverconfig/0,
-	 serversync/1,
-	 permissionquery/1,
-	 usercount/0,
-	 voice_data/6,
-	 list_banlist/0]).
+-export(
+	[
+		start_link/0,
+		version/0,
+		authenticate/3,
+		channelstates/0,
+		channelstate/1,
+		channel_filter/1,
+		channelremove/2,
+		channel_name/1,
+		channel_id/1,
+		userstates/0,
+		userstate/1,
+		userremove/1,
+		codecversion/0,
+		codecversion/1,
+		serversync/1,
+		serverconfig/0,
+		usercount/0,
+		permissionquery/1,
+		voice_data/6,
+		list_banlist/0
+	]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+-export(
+	[
+		init/1,
+		handle_call/3,
+		handle_cast/2,
+		handle_info/2,
+		terminate/2,
+		code_change/3
+	]).
 
 -define(PERM_NONE, 16#0).
 -define(PERM_WRITE, 16#1).
@@ -62,7 +72,6 @@
 -define(SERVER, ?MODULE).
 
 -record(channel,{channel_id,parent,name}).
--record(permission,{user,channel,permission}).
 -record(state, {channels}).
 
 -export_record_info([channel]).
@@ -180,18 +189,24 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call(version, _From, State) ->
-    {OsFamily, OsName} = os:type(),
-    OsNameString = io_lib:format("~w-~w",[OsFamily,OsName]),
-    OsVersion = case os:version() of
-		    {Major, Minor, Release} ->
+  {OsFamily, OsName} = os:type(),
+  OsNameString = io_lib:format("~w-~w",[OsFamily,OsName]),
+  OsVersion = case os:version() of
+		{Major, Minor, Release} ->
 			io_lib:format("~w.~w.~w",[Major,Minor,Release]);
-		    V -> V
-		end,
-    <<ErlmurVersion:32>> = <<1:16,2:8,3:8>>,
-    {reply, [{version, ErlmurVersion},
-	     {release, <<"erlmur">>},
-	     {os, list_to_binary(OsNameString)},
-	     {os_version, list_to_binary(OsVersion)}], State};
+		V -> V
+	end,
+	<<ErlmurVersion:32>> = <<1:16,2:8,3:8>>,
+	{
+		reply,
+		[
+			{version, ErlmurVersion},
+			{release, <<"erlmur">>},
+			{os, list_to_binary(OsNameString)},
+			{os_version, list_to_binary(OsVersion)}
+		],
+		State
+	};
 
 handle_call({authenticate,User,Pass,Address}, {Pid,_}, State) ->
     error_logger:info_report([{erlmur_server,handle_call},
@@ -289,12 +304,12 @@ handle_cast({codecversion,_C}, State) ->
     {noreply, State};
 
 handle_cast({voice_data,Type,16#1F,Pid,Counter,Voice,_Positional},State) ->
-    User = erlmur_users:fetch_user({client_pid,Pid}),
-    Sid = erlmur_users:session(User),
-    C = erlmur_varint:encode(Counter),
-    EncodedSid = erlmur_varint:encode(Sid),
-    erlmur_client:send_udp(Pid,<<Type:3,0:5,EncodedSid/binary,C/binary,Voice/binary>>),
-    {noreply, State};
+  User = erlmur_users:fetch_user({client_pid,Pid}),
+  Sid = erlmur_users:session(User),
+  C = erlmur_varint:encode(Counter),
+  EncodedSid = erlmur_varint:encode(Sid),
+  erlmur_client:send_udp(Pid,<<Type:3,0:5,EncodedSid/binary,C/binary,Voice/binary>>),
+  {noreply, State};
 
 handle_cast({voice_data,Type,16#00,Pid,Counter,Voice,Positional},State) ->
     User = erlmur_users:fetch_user({client_pid,Pid}),
@@ -325,7 +340,7 @@ handle_cast({channelstate,PropList},State = #state{channels=Cs}) ->
     notify_if_changed(ChannelId,UpdatedFields),
     {noreply, State#state{channels=dict:store(ChannelId, UpdatedChannel, Cs)}};
 
-handle_cast({channelremove,PropList,Actor},State = #state{channels=Channels}) ->
+handle_cast({channelremove,PropList, _Actor},State = #state{channels=Channels}) ->
     ChannelId = proplists:get_value(channel_id,PropList),
     Channel = dict:fetch(ChannelId,Channels),
     ChannelsToRemove = subtree(Channel,Channels),
@@ -416,51 +431,45 @@ maybe_update_channel(Channel,UpdatedFields) ->
 		{Channel,[]},UpdatedFields).
 
 permissions(_Channel,_User) ->
-    ?PERM_ALL. %?PERM_NONE.
+  ?PERM_ALL. %?PERM_NONE.
 
 childs(Parent,Channels) ->
-    dict:filter(fun(_Key,C) -> C#channel.parent =:= Parent#channel.channel_id end, Channels).
+  dict:filter(fun(_Key,C) -> C#channel.parent =:= Parent#channel.channel_id end, Channels).
 
 subtree(Parent,Channels) ->
-    NewChilds = dict:fold(fun(_Key,Value,Acc) -> [Value|Acc] end,[],childs(Parent,Channels)),
-    subtree(Channels,NewChilds,[Parent]).
+	NewChilds = dict:fold(fun(_Key,Value,Acc) -> [Value|Acc] end,[],childs(Parent,Channels)),
+	subtree(Channels,NewChilds,[Parent]).
 
-subtree(_Channels,[],Acc) ->
-    Acc;
+subtree(_Channels,[],Acc) -> Acc;
 subtree(Channels,[C|Cs],Acc) ->
-    NewChilds = dict:fold(fun(_Key,Value,Acc) -> [Value|Acc] end,[],childs(C,Channels)),
-    subtree(Channels,Cs++NewChilds,[C|Acc]).
+	NewChilds = dict:fold(fun(_Key,Value,A) -> [Value|A] end,[],childs(C,Channels)),
+	subtree(Channels,Cs++NewChilds,[C|Acc]).
 
-channel_update(Channel,name,Name) ->
-    {Channel#channel{name=Name},Channel#channel.name =/= Name};
-channel_update(Channel,parent,Parent) ->
-    {Channel#channel{parent=Parent},Channel#channel.parent =/= Parent};
-channel_update(Channel,Key,Value) ->
-    {Channel,false}.
+channel_update(Channel,name,Name) -> {Channel#channel{name=Name},Channel#channel.name =/= Name};
+channel_update(Channel,parent,Parent) -> {Channel#channel{parent=Parent},Channel#channel.parent =/= Parent};
+channel_update(Channel,_Key,_Value) -> {Channel,false}.
 
+notify_removed([]) -> ok;
 notify_removed([Channel|Channels]) ->
-  erlmur_channel_feed:notify({removed,[{channel_id,Channel#channel.channel_id}]}).
+	erlmur_channel_feed:notify({removed,[{channel_id,Channel#channel.channel_id}]}), notify_removed(Channels).
 
-notify_if_changed(Id,[]) ->
-    noting_new;
-notify_if_changed(Id,UpdatedFields) ->
-    erlmur_channel_feed:notify({update,[{channel_id,Id}|UpdatedFields]}).
+notify_if_changed(_Id,[]) -> noting_new;
+notify_if_changed(Id,UpdatedFields) -> erlmur_channel_feed:notify({update,[{channel_id,Id}|UpdatedFields]}).
 
 %%% Stream of integers %%%
 integers() -> advance(1, fun(N) -> N + 1 end).
 
 %%% Lazy filter %%%
 filter(Pred, Stream) ->
-    case Pred(head(Stream)) of
-         true ->
-              cons(head(Stream), fun() -> filter(Pred, next(Stream)) end);
-         false ->
-              filter(Pred, next(Stream))
-    end.
+	case Pred(head(Stream)) of
+		true -> cons(head(Stream), fun() -> filter(Pred, next(Stream)) end);
+		false -> filter(Pred, next(Stream))
+	end.
 
 cons(Head, NextStream) -> {Head, NextStream}.
+
 head({Head, _}) -> Head.
+
 next({_, NextStream}) -> NextStream().
 
-advance(Start, Next) ->
-    cons(Start, fun() -> advance(Next(Start), Next) end).
+advance(Start, Next) -> cons(Start, fun() -> advance(Next(Start), Next) end).

@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %%% @author David AAberg <davabe@hotmail.com>
-%%% @copyright (C) 2013, 
+%%% @copyright (C) 2013,
 %%% @doc
 %%%
 %%% @end
@@ -28,9 +28,9 @@
 start_link() ->
     {ok,App} = application:get_application(),
     ListenPort = application:get_env(App, listen_port, ?DEF_PORT),
-    ServerPem = application:get_env(App, server_pem, "server.pem"),
+    CertPem = application:get_env(App, cert_pem, "cert.pem"),
     KeyPem = application:get_env(App, key_pem, "key.pem"),
-    supervisor:start_link({local, ?MODULE}, ?MODULE, [ListenPort,ServerPem,KeyPem]).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [ListenPort,CertPem,KeyPem]).
 
 %% ===================================================================
 %% Supervisor callbacks
@@ -44,4 +44,3 @@ init([Port,ServerPem,KeyPem]) ->
     ErlmurServer = ?CHILD(erlmur_server,worker,[]),
 
     {ok, { {one_for_one, 5, 10}, [ErlmurClientSup,ErlmurSsl,ErlmurUdp,ErlmurMonitorUsers,ErlmurServer]} }.
-

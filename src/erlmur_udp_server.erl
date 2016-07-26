@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %%% @author David AAberg <davabe@hotmail.com>
-%%% @copyright (C) 2013, 
+%%% @copyright (C) 2013,
 %%% @doc
 %%%
 %%% @end
@@ -17,7 +17,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--define(SERVER, ?MODULE). 
+-define(SERVER, ?MODULE).
 
 -record(state, {socket}).
 
@@ -103,29 +103,25 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({udp, _Socket, IP, PortNo, <<0:32,Timestamp:64>>}, State) ->
-    {UC,MC}=erlmur_server:usercount(),
-    Version = <<1:16,2:8,0:8>>,
-    ClientCount = UC,
-    MaxClients = MC,
-    MaxBandwidth = 72000,
-    send(IP,PortNo,<<Version/binary,
-		     Timestamp:64,
-		     ClientCount:32,
-		     MaxClients:32,
-		     MaxBandwidth:32>>),
-    {noreply,State};
+handle_info({udp, _Socket, IP, PortNo, <<0:32,Timestamp:64>>}, State=#state{socket=Socket}) ->
+  {UC,MC}=erlmur_server:usercount(),
+  Version = <<1:16,2:8,0:8>>,
+  ClientCount = UC,
+  MaxClients = MC,
+  MaxBandwidth = 72000,
+	gen_udp:send(Socket, IP, PortNo, <<Version/binary, Timestamp:64, ClientCount:32, MaxClients:32, MaxBandwidth:32>>),
+  {noreply,State};
 handle_info({udp, _Socket, IP, PortNo, EncryptedMsg}, State) ->
-    Users = erlmur_users:find_user({address,IP}),
-    lists:foreach(fun(User) -> 
-			  Pid = erlmur_users:client_pid(User),
-			  erlmur_client:handle_msg(Pid,PortNo,EncryptedMsg)
-		  end,
-		  Users),
-    {noreply, State};
+  Users = erlmur_users:find_user({address,IP}),
+  lists:foreach(fun(User) ->
+		  Pid = erlmur_users:client_pid(User),
+		  erlmur_client:handle_msg(Pid,PortNo,EncryptedMsg)
+	  end,
+	  Users),
+  {noreply, State};
 handle_info(Info, State) ->
-    error_logger:info_report([{erlmur_udp_server,"Unhandled info"},{info,Info}]),
-    {noreply, State}.
+  error_logger:info_report([{erlmur_udp_server,"Unhandled info"},{info,Info}]),
+  {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private

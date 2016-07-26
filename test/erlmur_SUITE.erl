@@ -55,12 +55,12 @@ suite() ->
 %%--------------------------------------------------------------------
 init_per_suite(Config) ->
   DataDir = ?config(data_dir, Config),
-  ServerPem = filename:join([DataDir, "server.pem"]),
+  CertPem = filename:join([DataDir, "cert.pem"]),
   KeyPem = filename:join([DataDir, "key.pem"]),
-  application:set_env(erlmur, server_pem, ServerPem),
-  application:set_env(erlmur, key_pem, KeyPem),
-  ok = application:start(mnesia),
-  ok = application:start(ocb128_crypto),
+  application:set_env(erlmur, cert_pem, CertPem, [{persistent, true}]),
+  application:set_env(erlmur, key_pem, KeyPem, [{persistent, true}]),
+  {ok, _} = application:ensure_all_started(mnesia),
+  {ok, _} = application:ensure_all_started(ocb128_crypto),
   Config.
 
 %%--------------------------------------------------------------------
@@ -94,7 +94,7 @@ end_per_suite(_Config) ->
 %% @end
 %%--------------------------------------------------------------------
 init_per_group(_GroupName, Config) ->
-    Config.
+  Config.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -110,7 +110,7 @@ init_per_group(_GroupName, Config) ->
 %% @end
 %%--------------------------------------------------------------------
 end_per_group(_GroupName, _Config) ->
-    ok.
+  ok.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -131,9 +131,9 @@ end_per_group(_GroupName, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 init_per_testcase(_TestCase, Config) ->
-    meck:new(ssl),
-    start_erlmur(),
-    Config.
+  meck:new(ssl),
+  start_erlmur(),
+  Config.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -149,9 +149,9 @@ init_per_testcase(_TestCase, Config) ->
 %% @end
 %%--------------------------------------------------------------------
 end_per_testcase(_TestCase, _Config) ->
-    stop_erlmur(),
-    meck:unload(ssl),
-    ok.
+  stop_erlmur(),
+  meck:unload(ssl),
+  ok.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -177,7 +177,7 @@ end_per_testcase(_TestCase, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 groups() ->
-    [].
+  [].
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -196,14 +196,16 @@ groups() ->
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [version_msg_test_case,
-     authenticate_msg_test_case,
-     ping_msg_test_case,
-     permissionquery_msg_test_case,
-     userstate_msg_test_case,
-     userstats_msg_test_case,
-     userremove_msg_test_case,
-     channelstate_msg_test_case].
+  [
+    version_msg_test_case,
+    authenticate_msg_test_case,
+    ping_msg_test_case,
+    permissionquery_msg_test_case,
+    userstate_msg_test_case,
+    userstats_msg_test_case,
+    userremove_msg_test_case,
+    channelstate_msg_test_case
+  ].
 
 
 %%--------------------------------------------------------------------
@@ -225,28 +227,28 @@ all() ->
 %% @end
 %%--------------------------------------------------------------------
 version_msg_test_case() ->
-    [].
+  [].
 
 authenticate_msg_test_case() ->
-    [].
+  [].
 
 ping_msg_test_case() ->
-    [].
+  [].
 
 permissionquery_msg_test_case() ->
-    [].
+  [].
 
 userstate_msg_test_case() ->
-    [].
+  [].
 
 userstats_msg_test_case() ->
-    [].
+  [].
 
 userremove_msg_test_case() ->
-    [].
+  [].
 
 channelstate_msg_test_case() ->
-    [].
+  [].
 
 %%--------------------------------------------------------------------
 %% @doc Test case function. (The name of it must be specified in
@@ -266,128 +268,128 @@ channelstate_msg_test_case() ->
 %% @end
 %%--------------------------------------------------------------------
 version_msg_test_case(_Config) ->
-    Client = start_erlmur_client(),
-    send_version(Client).
+  Client = start_erlmur_client(),
+  send_version(Client).
 
 authenticate_msg_test_case(_Config) ->
-    Client = start_erlmur_client(),
-    send_authenticate(Client).
+  Client = start_erlmur_client(),
+  send_authenticate(Client).
 
 ping_msg_test_case(_Config) ->
-    Client = start_erlmur_client(),
-    send_ping(Client).
+  Client = start_erlmur_client(),
+  send_ping(Client).
 
 permissionquery_msg_test_case(_Config) ->
-    Client = start_erlmur_client(),
-    send_permissionquery(Client).
+  Client = start_erlmur_client(),
+  send_permissionquery(Client).
 
 userstate_msg_test_case(_Config) ->
-    Client = start_erlmur_client(),
-    send_authenticate(Client),
-    send_userstate(Client).
+  Client = start_erlmur_client(),
+  send_authenticate(Client),
+  send_userstate(Client).
 
 userstats_msg_test_case(_Config) ->
-    Client = start_erlmur_client(),
-    send_authenticate(Client),
-    send_userstats(Client).
+  Client = start_erlmur_client(),
+  send_authenticate(Client),
+  send_userstats(Client).
 
 userremove_msg_test_case(_Config) ->
-    Client1 = start_erlmur_client(),
-    Client2 = start_erlmur_client(),
-    send_authenticate(Client1),
-    send_authenticate(Client2),
-    send_userremove(Client2,Client1).
+  Client1 = start_erlmur_client(),
+  Client2 = start_erlmur_client(),
+  send_authenticate(Client1),
+  send_authenticate(Client2),
+  send_userremove(Client2,Client1).
 
 channelstate_msg_test_case(_Config) ->
-    Client = start_erlmur_client(),
-    send_authenticate(Client),
-    send_new_channel(Client,[{parent,0},{name,"Test"}]),
-    Channels = erlmur_server:channel_filter(fun(C) -> erlmur_server:channel_name(C) =:= "Test" end),
-    lists:foreach(fun(C) -> send_remove_channel(Client,erlmur_server:channel_id(C)) end, Channels).
+  Client = start_erlmur_client(),
+  send_authenticate(Client),
+  send_new_channel(Client,[{parent,0},{name,"Test"}]),
+  Channels = erlmur_server:channel_filter(fun(C) -> erlmur_server:channel_name(C) =:= "Test" end),
+  lists:foreach(fun(C) -> send_remove_channel(Client,erlmur_server:channel_id(C)) end, Channels).
 
 %%--------------------------------------------------------------------
 %% Help functions
 %%--------------------------------------------------------------------
 start_erlmur() ->
-    %% Setup ssl
-    meck:expect(ssl, listen, fun(Port, Options) -> meck:passthrough([Port, Options]) end),
-    meck:expect(ssl, transport_accept, fun(ListenSocket) -> meck:passthrough([ListenSocket]) end),
-    meck:expect(ssl, close, fun(_Socket) -> ok end),
-    meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
-    meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
-    meck:expect(ssl, setopts, fun(_Socket,_Options) -> ok end),
-    meck:expect(ssl, peername, fun(Socket) ->{ok, {Socket, port}} end),
+  %% Setup ssl
+  meck:expect(ssl, listen, fun(Port, Options) -> meck:passthrough([Port, Options]) end),
+  meck:expect(ssl, transport_accept, fun(ListenSocket) -> meck:passthrough([ListenSocket]) end),
+  meck:expect(ssl, close, fun(_Socket) -> ok end),
+  meck:expect(ssl, controlling_process, fun(_Socket,_Pid) -> ok end),
+  meck:expect(ssl, ssl_accept, fun(_Socket) -> ok end),
+  meck:expect(ssl, setopts, fun(_Socket,_Options) -> ok end),
+  meck:expect(ssl, peername, fun(Socket) ->{ok, {Socket, port}} end),
 
-    Server = self(),
+  Server = self(),
 
-    meck:expect(ssl, send, fun(Socket,Msg) -> Server ! {Socket,Msg} end),
+  meck:expect(ssl, send, fun(Socket,Msg) -> Server ! {Socket,Msg} end),
 
-    ok = application:start(erlmur).
+  {ok, _} = application:ensure_all_started(erlmur).
 
 stop_erlmur() ->
-    application:stop(erlmur).
+  application:stop(erlmur).
 
 start_erlmur_client() ->
-    Socket = make_ref(),
-    {ok, Pid} = supervisor:start_child(erlmur_client_sup, []),
-    gen_server:cast(Pid, {socket, Socket}),
-    {Pid,Socket}.
+  Socket = make_ref(),
+  {ok, Pid} = supervisor:start_child(erlmur_client_sup, []),
+  gen_server:cast(Pid, {socket, Socket}),
+  {Pid,Socket}.
 
 stop_erlmur_client({Pid,_}) ->
-    supervisor:terminate_child(erlmur_client_sup, Pid).
+  supervisor:terminate_child(erlmur_client_sup, Pid).
 
 send_version({Pid,Socket}) ->
-    VersionMsg = erlmur_message:pack({version,[]}),
-    Pid ! {ssl, self(), VersionMsg},
-    get_replies(Socket,[version]).
+  VersionMsg = erlmur_message:pack({version,[]}),
+  Pid ! {ssl, self(), VersionMsg},
+  get_replies(Socket,[version]).
 
 send_authenticate({Pid,Socket}) ->
-    AuthenticateMsg = erlmur_message:pack({authenticate,[]}),
-    Pid ! {ssl, self(), AuthenticateMsg},
-    get_replies(Socket,[channelstate,userstate,cryptsetup,codecversion,serverconfig,serversync]).
+  AuthenticateMsg = erlmur_message:pack({authenticate,[]}),
+  Pid ! {ssl, self(), AuthenticateMsg},
+  get_replies(Socket,[channelstate,userstate,cryptsetup,codecversion,serverconfig,serversync]).
 
 send_ping({Pid,Socket}) ->
-    PingMsg = erlmur_message:pack({ping,[]}),
-    Pid ! {ssl, self(), PingMsg},
-    get_replies(Socket,[ping]).
+  PingMsg = erlmur_message:pack({ping,[]}),
+  Pid ! {ssl, self(), PingMsg},
+  get_replies(Socket,[ping]).
 
 send_permissionquery({Pid,Socket}) ->
-    PermissionqueryMsg = erlmur_message:pack({permissionquery,[]}),
-    Pid ! {ssl, self(), PermissionqueryMsg},
-    get_replies(Socket,[permissionquery]).
+  PermissionqueryMsg = erlmur_message:pack({permissionquery,[]}),
+  Pid ! {ssl, self(), PermissionqueryMsg},
+  get_replies(Socket,[permissionquery]).
 
 send_userstate({Pid,Socket}) ->
-    UserStateMsg = erlmur_message:pack({userstate,[]}),
-    Pid ! {ssl, self(), UserStateMsg},
-    get_replies(Socket,[userstate]).
+  UserStateMsg = erlmur_message:pack({userstate,[]}),
+  Pid ! {ssl, self(), UserStateMsg},
+  get_replies(Socket,[userstate]).
 
 send_userstats({Pid,Socket}) ->
-    UserStatsMsg = erlmur_message:pack({userstats,[]}),
-    Pid ! {ssl, self(), UserStatsMsg},
-    get_replies(Socket,[userstats]).
+  UserStatsMsg = erlmur_message:pack({userstats,[]}),
+  Pid ! {ssl, self(), UserStatsMsg},
+  get_replies(Socket,[userstats]).
 
 send_userremove({Pid,Socket},{PidToRemove,_}) ->
-    [UserToRemove] = erlmur_users:find_user({client_pid,PidToRemove}),
-    UserRemoveMsg = erlmur_message:pack({userremove,[{session,erlmur_users:session(UserToRemove)}]}),
-    Pid ! {ssl, self(), UserRemoveMsg},
-    get_replies(Socket,[userremove]).
+  [UserToRemove] = erlmur_users:find_user({client_pid,PidToRemove}),
+  UserRemoveMsg = erlmur_message:pack({userremove,[{session,erlmur_users:session(UserToRemove)}]}),
+  Pid ! {ssl, self(), UserRemoveMsg},
+  get_replies(Socket,[userremove]).
 
 send_new_channel({Pid,Socket},NewChannel) ->
-    ChannelStateMsg = erlmur_message:pack({channelstate,NewChannel}),
-    Pid ! {ssl, self(), ChannelStateMsg},
-    get_replies(Socket,[channelstate]).
+  ChannelStateMsg = erlmur_message:pack({channelstate,NewChannel}),
+  Pid ! {ssl, self(), ChannelStateMsg},
+  get_replies(Socket,[channelstate]).
 
 send_remove_channel({Pid,Socket},ChannelId) ->
-    ChannelRemoveMsg = erlmur_message:pack({channelremove,[{channel_id,ChannelId}]}),
-    Pid ! {ssl, self(), ChannelRemoveMsg},
-    get_replies(Socket,[channelremove]).
+  ChannelRemoveMsg = erlmur_message:pack({channelremove,[{channel_id,ChannelId}]}),
+  Pid ! {ssl, self(), ChannelRemoveMsg},
+  get_replies(Socket,[channelremove]).
 
 get_replies(_Socket,[]) ->
-    ok;
+  ok;
 get_replies(Socket,Expected) ->
-    receive
-	{Socket,Msg} ->
-	    [{Type,M}] = erlmur_message:control_msg(Msg),
-	    {T,_} = erlmur_message:unpack(Type,M),
-	    get_replies(Socket,lists:delete(T,Expected))
-    end.
+  receive
+    {Socket,Msg} ->
+      [{Type,M}] = erlmur_message:control_msg(Msg),
+      {T,_} = erlmur_message:unpack(Type,M),
+      get_replies(Socket,lists:delete(T,Expected))
+  end.

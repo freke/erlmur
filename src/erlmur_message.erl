@@ -135,18 +135,18 @@ pack({permissionquery,PropList}) ->
     R = mumble_gpb:encode_msg(PQ),
     encode_message(?MSG_PERMISSIONQUERY,R);
 pack({udp_tunnel,Data}) ->
-    encode_message(?MSG_UDPTUNNEL,Data);
+    encode_message(?MSG_UDPTUNNEL, Data);
 pack({textmessage,PropList}) ->
     TM = textmessage(PropList),
     R = mumble_gpb:encode_msg(TM),
     encode_message(?MSG_TEXTMESSAGE,R).
 
 data_msg(<<1:3,0:5,_Timestamp/binary>> = PingMsg) ->
-    PingMsg;
+  PingMsg;
 data_msg(<<Type:3,Target:5,Rest/binary>>) ->
-    {Counter,R} = erlmur_varint:decode(Rest),
-    {Voice,Positional} = split_voice_positional(Type,R),
-    {voice_data,Type,Target,Counter,Voice,Positional}.
+  {Counter,R} = erlmur_varint:decode(Rest),
+  {Voice,Positional} = split_voice_positional(Type,R),
+  {voice_data,Type,Target,Counter,Voice,Positional}.
 
 control_msg(<<>>) ->
     [];

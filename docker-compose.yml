@@ -6,7 +6,8 @@ services:
       context: ./docker
       dockerfile: Dockerfile_dev
     ports:
-     - "8000:8000"
+     - "64738:64738/tcp"
+     - "64738:64738/udp"
     volumes:
       - .:/src/erlmur
       - rebar3:/root/.cache/rebar3

@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %%% @author David AAberg <davabe@hotmail.com>
-%%% @copyright (C) 2013, 
+%%% @copyright (C) 2013,
 %%% @doc
 %%%
 %%% @end
@@ -19,9 +19,9 @@
 
 -include_lib("public_key/include/public_key.hrl").
 
--define(SERVER, ?MODULE). 
+-define(SERVER, ?MODULE).
 -define(SSL_OPTIONS, [binary,
-		      {active, false}, 
+		      {active, false},
 		      {reuseaddr, true},
 		      {verify, verify_peer},
 		      {verify_fun, {fun verify_peer/3, []}},
@@ -41,8 +41,8 @@
 %% @end
 %%--------------------------------------------------------------------
 -spec start_link(integer(),string(),string()) -> ignore | {error,_} | {ok,pid()}.
-start_link(Port,ServerPem,KeyPem) when is_integer(Port) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [Port,ServerPem,KeyPem], []).
+start_link(Port,CertPem,KeyPem) when is_integer(Port) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [Port,CertPem,KeyPem], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -60,20 +60,23 @@ start_link(Port,ServerPem,KeyPem) when is_integer(Port) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec init([any()]) -> {ok,#state{}} | {stop,_}.
-init([Port,ServerPem,KeyPem]) ->
-    error_logger:info_report([{erlmur_ssl_server,init},{server,ServerPem},{key,KeyPem}]),
-    true = filelib:is_regular(KeyPem),
-    true = filelib:is_regular(ServerPem),
+init([Port,CertPem,KeyPem]) ->
+  error_logger:info_report([{erlmur_ssl_server,init},{cert,CertPem},{key,KeyPem}]),
+  true = filelib:is_regular(KeyPem),
+  true = filelib:is_regular(CertPem),
 
-    case ssl:listen(Port, [{certfile, ServerPem},
-			   {keyfile, KeyPem}
-			   |?SSL_OPTIONS ]) of
-	{ok, Listen_socket} ->
-	    gen_server:cast(self(), {accepted, self()}),
-	    {ok, #state{listener = Listen_socket}};
-	{error, Reason} ->
-	    {stop, Reason}
-    end.
+  case ssl:listen(Port,
+		[
+			{certfile, CertPem},
+		  {keyfile, KeyPem}
+		  |?SSL_OPTIONS
+		]) of
+		{ok, Listen_socket} ->
+    	gen_server:cast(self(), {accepted, self()}),
+    	{ok, #state{listener = Listen_socket}};
+		{error, Reason} ->
+    	{stop, Reason}
+  end.
 
 %%--------------------------------------------------------------------
 %% @private

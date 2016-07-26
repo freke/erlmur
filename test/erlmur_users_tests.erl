@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %%% @author  David AAberg <davabe@hotmail.com>
-%%% @copyright (C) 2013, 
+%%% @copyright (C) 2013,
 %%% @doc
 %%%
 %%% @end
@@ -58,7 +58,7 @@ select_by_id(_) ->
     [?_assertEqual(user1, erlmur_users:name(erlmur_users:fetch_user({id,U1}))),
      ?_assertEqual(user2, erlmur_users:name(erlmur_users:fetch_user({id,U2}))),
      ?_assert(meck:validate(erlmur_client))].
-    
+
 
 move_user_to_channel(_) ->
     U = add_user(self(),user1,1),
@@ -85,7 +85,10 @@ find_user_from_pid(_) ->
 list_users(_) ->
     U1 = add_user(self(),user1,1),
     U2 = add_user(self(),user2,2),
-    [?_assertEqual(2, length(erlmur_users:list()))].
+    [
+      ?_assertEqual(2, length(erlmur_users:list())),
+      ?_assertEqual(true, lists:all(fun(E) -> E =:= U1 orelse E =:= U2 end, erlmur_users:list()))
+    ].
 
 %%%%%%%%%%%%%%%%%%%%%%
 %%% HELP FUNCTIONS %%%

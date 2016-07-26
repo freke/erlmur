@@ -1,5 +1,5 @@
 %%% @author David AAberg <davabe@hotmail.com>
-%%% @copyright (C) 2013, 
+%%% @copyright (C) 2013,
 %%% @doc
 %%%
 %%% @end
@@ -14,5 +14,5 @@ start() ->
     application:start(mnesia),
     application:start(erlmur).
 
-register_user(User) ->
+register_user(_User) ->
     ok.
