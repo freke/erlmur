@@ -8,24 +8,27 @@
 %%%-------------------------------------------------------------------
 -module(erlmur_users).
 
--export([init/1,
-	 id/1,
-	 client_pid/1,
-	 session/1,
-	 name/1,
-	 channel_id/1,
-	 all_user_states/1,
-	 list_clients/0,
-	 find_user/1,
-	 fetch_user/1,
-	 remove/4,
-	 add/3,
-	 update/3,
-	 list/0,
-	 move_to_channel/3,
-	 send_to_all/1,
-	 list_registered_users/0,
-	 users_in_channel/1]).
+-export(
+	[
+		init/1,
+		id/1,
+		client_pid/1,
+		session/1,
+		name/1,
+		channel_id/1,
+		all_user_states/1,
+		list_clients/0,
+		find_user/1,
+		fetch_user/1,
+		remove/4,
+		add/3,
+		update/3,
+		list/0,
+		move_to_channel/3,
+		send_to_all/1,
+		list_registered_users/0,
+		users_in_channel/1
+	]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
 -include_lib("record_info/include/record_info.hrl").
@@ -41,16 +44,18 @@
 %% @end
 %%--------------------------------------------------------------------
 init(Nodes) ->
-    mnesia:create_table(user,
-			[{attributes, record_info(fields, user)},
-			 {ram_copies, Nodes},
-			 {index,[#user.client_pid]},
-			 {type, set}]),
+  mnesia:create_table(user,
+		[
+			{attributes, record_info(fields, user)},
+			{ram_copies, Nodes},
+			{index,[#user.client_pid]},
+			{type, set}
+		]),
 
-    ets:new(user_counters, [set, {keypos, #counter_entry.id}, named_table, public]),
-    ets:insert(user_counters, #counter_entry{id=userid, value=0}),
-    ets:insert(user_counters, #counter_entry{id=sessionid, value=0}),
-    ok = mnesia:wait_for_tables([user],5000).
+  ets:new(user_counters, [set, {keypos, #counter_entry.id}, named_table, public]),
+	ets:insert(user_counters, #counter_entry{id=userid, value=0}),
+  ets:insert(user_counters, #counter_entry{id=sessionid, value=0}),
+	[user].
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -98,7 +103,7 @@ channel_id(User) ->
 %% @end
 %%--------------------------------------------------------------------
 all_user_states(Actor) ->
-    F = fun() ->
+  F = fun() ->
 		mnesia:foldl(fun(User,Acc) -> [userstate(User,Actor)|Acc] end, [], user)
 	end,
   mnesia:activity(transaction, F).
@@ -109,7 +114,7 @@ all_user_states(Actor) ->
 %% @end
 %%--------------------------------------------------------------------
 list_clients() ->
-    F = fun() ->
+  F = fun() ->
 		mnesia:foldl(fun(User,Acc) -> [User#user.client_pid|Acc] end, [], user)
 	end,
     mnesia:activity(transaction, F).
@@ -120,11 +125,11 @@ list_clients() ->
 %% @end
 %%--------------------------------------------------------------------
 find_user({address,Address}) ->
-    Match = ets:fun2ms(fun(X = #user{address=A}) when Address =:= A -> X end),
-    F = fun() ->
+  Match = ets:fun2ms(fun(X = #user{address=A}) when Address =:= A -> X end),
+  F = fun() ->
 		mnesia:select(user, Match)
 	end,
-    mnesia:activity(transaction, F);
+  mnesia:activity(transaction, F);
 find_user({name,Name}) ->
     Match = ets:fun2ms(fun(X = #user{name=N}) when Name =:= N -> X end),
     F = fun() ->
@@ -160,24 +165,24 @@ find_user({client_pid,Pid}) ->
 %% @end
 %%--------------------------------------------------------------------
 fetch_user({client_pid,Pid}) ->
-    F = fun() ->
+  F = fun() ->
 		mnesia:index_read(user, Pid, #user.client_pid)
 	end,
-    [U] = mnesia:activity(transaction, F),
-    U;
+  [U] = mnesia:activity(transaction, F),
+  U;
 fetch_user({session,Session}) ->
-    Match = ets:fun2ms(fun(X = #user{session=S}) when Session =:= S -> X end),
-    F = fun() ->
+  Match = ets:fun2ms(fun(X = #user{session=S}) when Session =:= S -> X end),
+  F = fun() ->
 		mnesia:select(user, Match)
 	end,
-    [U] = mnesia:activity(transaction, F),
-    U;
+  [U] = mnesia:activity(transaction, F),
+  U;
 fetch_user({id,Id}) ->
-    F = fun() ->
+  F = fun() ->
 		mnesia:read(user, Id)
 	end,
-    [U] = mnesia:activity(transaction, F),
-    U.
+  [U] = mnesia:activity(transaction, F),
+  U.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -185,16 +190,16 @@ fetch_user({id,Id}) ->
 %% @end
 %%--------------------------------------------------------------------
 remove([], _Actor, _Reason, _Ban) ->
-    ok;
+  ok;
 remove([User|Users], Actor, Reason, Ban) ->
-    remove(User, Actor, Reason, Ban),
-    remove(Users, Actor, Reason, Ban);
+  remove(User, Actor, Reason, Ban),
+  remove(Users, Actor, Reason, Ban);
 remove(User, Actor, Reason , Ban) ->
-    F = fun() ->
+  F = fun() ->
 		mnesia:delete({user,User#user.id})
 	end,
-    mnesia:activity(transaction, F),
-    send_to_all(userremove(User,Actor,Reason,Ban)).
+  mnesia:activity(transaction, F),
+  send_to_all(userremove(User,Actor,Reason,Ban)).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -202,24 +207,24 @@ remove(User, Actor, Reason , Ban) ->
 %% @end
 %%--------------------------------------------------------------------
 add(Pid,Name,Address) ->
-    UserId = ets:update_counter(user_counters, userid, {#counter_entry.value, 1}),
-    SessionId = ets:update_counter(user_counters, sessionid, {#counter_entry.value, 1}),
-    User=#user{name=Name,
-	       id=UserId,
-	       session=SessionId,
-	       address=Address,
-	       client_pid=Pid,
-	       channel_id=0},
-    F = fun() ->
+  UserId = ets:update_counter(user_counters, userid, {#counter_entry.value, 1}),
+  SessionId = ets:update_counter(user_counters, sessionid, {#counter_entry.value, 1}),
+  User=#user{name=Name,
+       id=UserId,
+       session=SessionId,
+       address=Address,
+       client_pid=Pid,
+       channel_id=0},
+  F = fun() ->
 		mnesia:write(User)
 	end,
-    mnesia:activity(transaction, F),
-    error_logger:info_report([{erlmur_server,add_user},
-			      {id,UserId},
-			      {name,Name},
-			      {session_id,SessionId}]),
-    send_to_all(userstate(User,undefined)),
-    UserId.
+  mnesia:activity(transaction, F),
+  error_logger:info_report([{erlmur_server,add_user},
+		      {id,UserId},
+		      {name,Name},
+		      {session_id,SessionId}]),
+  send_to_all(userstate(User,undefined)),
+  UserId.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -227,28 +232,28 @@ add(Pid,Name,Address) ->
 %% @end
 %%--------------------------------------------------------------------
 update([],User,Actor) ->
-    F = fun() ->
+  F = fun() ->
 		mnesia:write(user, User, write)
 	end,
-    mnesia:activity(transaction, F),
-    send_to_all(userstate(User,Actor));
+  mnesia:activity(transaction, F),
+  send_to_all(userstate(User,Actor));
 update([{_,undefined}|R], User,Actor) ->
-    update(R,User,Actor);
+  update(R,User,Actor);
 update([{channel_id,NewChannel}|R], User,Actor) ->
-    update(R,User#user{channel_id=NewChannel},Actor);
+  update(R,User#user{channel_id=NewChannel},Actor);
 update([{client_pid,NewClient}|R], User,Actor) ->
-    update(R,User#user{client_pid=NewClient},Actor);
+  update(R,User#user{client_pid=NewClient},Actor);
 update([{name,NewName}|R], User,Actor) ->
-    update(R,User#user{name=NewName},Actor);
+  update(R,User#user{name=NewName},Actor);
 update([{self_mute,Mute}|R], User,Actor) ->
-    update(R,User#user{self_mute=Mute},Actor);
+  update(R,User#user{self_mute=Mute},Actor);
 update([{self_deaf,Deaf}|R], User,Actor) ->
-    update(R,User#user{self_deaf=Deaf},Actor);
+  update(R,User#user{self_deaf=Deaf},Actor);
 update([{comment,Comment}|R], User,Actor) ->
-    update(R,User#user{comment=Comment},Actor);
+  update(R,User#user{comment=Comment},Actor);
 update([V|R],User,Actor) ->
-    error_logger:info_report([{erlmur_users,update},{not_updating,V}]),
-    update(R,User,Actor).
+  error_logger:info_report([{erlmur_users,update},{not_updating,V}]),
+  update(R,User,Actor).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -256,10 +261,10 @@ update([V|R],User,Actor) ->
 %% @end
 %%--------------------------------------------------------------------
 list() ->
-    F = fun() ->
+  F = fun() ->
 		mnesia:foldl(fun(User,Acc) -> [User|Acc] end, [], user)
 	end,
-    mnesia:activity(transaction, F).
+  mnesia:activity(transaction, F).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -267,19 +272,19 @@ list() ->
 %% @end
 %%--------------------------------------------------------------------
 move_to_channel([],_,_) ->
-    ok;
+  ok;
 move_to_channel([User|Users],ChannelId,Actor) ->
-    move_to_channel(User,ChannelId,Actor),
-    move_to_channel(Users,ChannelId,Actor);
+  move_to_channel(User,ChannelId,Actor),
+  move_to_channel(Users,ChannelId,Actor);
 move_to_channel(User,ChannelId,Actor) ->
-    error_logger:info_report([{erlmur_users,move_to_channel},{user,User},{channel,ChannelId}]),
-    F = fun() ->
+  error_logger:info_report([{erlmur_users,move_to_channel},{user,User},{channel,ChannelId}]),
+  F = fun() ->
 		[U] = mnesia:dirty_read(user,User#user.id),
 		NewU = U#user{channel_id=ChannelId},
 		mnesia:write(NewU),
 		send_to_all(userstate(NewU,Actor))
 	end,
-    mnesia:activity(transaction, F).
+  mnesia:activity(transaction, F).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -287,14 +292,14 @@ move_to_channel(User,ChannelId,Actor) ->
 %% @end
 %%--------------------------------------------------------------------
 send_to_all(Msg) ->
-    F = fun() ->
+  F = fun() ->
 		mnesia:foldl(fun(#user{client_pid=P},_) ->
 				     P ! Msg
 			     end,
 			     [],
 			     user)
 	end,
-    mnesia:activity(transaction, F).
+  mnesia:activity(transaction, F).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -310,27 +315,27 @@ list_registered_users() ->
 %% @end
 %%--------------------------------------------------------------------
 users_in_channel([]) ->
-    [];
+  [];
 users_in_channel([Channel|Channels]) ->
-    lists:append(users_in_channel(Channel),users_in_channel(Channels));
+  lists:append(users_in_channel(Channel),users_in_channel(Channels));
 users_in_channel(Channel) ->
-    ChannelId = erlmur_channels:id(Channel),
-    Match = ets:fun2ms(fun(X = #user{channel_id=C}) when ChannelId =:= C -> X end),
-    F = fun() ->
+  ChannelId = erlmur_channels:channel_id(Channel),
+  Match = ets:fun2ms(fun(X = #user{channel_id=C}) when ChannelId =:= C -> X end),
+  F = fun() ->
 		mnesia:select(user, Match)
 	end,
-    mnesia:activity(transaction, F).
+  mnesia:activity(transaction, F).
 
 %%--------------------------------------------------------------------
 %% Internal
 %%--------------------------------------------------------------------
 userstate(User,undefined) ->
-    {userstate,record_info:record_to_proplist(User, ?MODULE)};
+  {userstate,record_info:record_to_proplist(User, ?MODULE)};
 userstate(User,Actor) ->
-    ActorId = id(Actor),
-    {userstate,[{actor,ActorId}|record_info:record_to_proplist(User, ?MODULE)]}.
+  ActorId = id(Actor),
+  {userstate,[{actor,ActorId}|record_info:record_to_proplist(User, ?MODULE)]}.
 
 userremove(User,undefined,Reason,Ban) ->
-    {userremove,[{reason,Reason},{ban,Ban}|record_info:record_to_proplist(User, ?MODULE)]};
+  {userremove,[{reason,Reason},{ban,Ban}|record_info:record_to_proplist(User, ?MODULE)]};
 userremove(User,Actor,Reason,Ban) ->
-    {userremove,[{reason,Reason},{actor,Actor},{ban,Ban}|record_info:record_to_proplist(User, ?MODULE)]}.
+  {userremove,[{reason,Reason},{actor,Actor},{ban,Ban}|record_info:record_to_proplist(User, ?MODULE)]}.

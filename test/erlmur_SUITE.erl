@@ -304,8 +304,8 @@ channelstate_msg_test_case(_Config) ->
   Client = start_erlmur_client(),
   send_authenticate(Client),
   send_new_channel(Client,[{parent,0},{name,"Test"}]),
-  Channels = erlmur_server:channel_filter(fun(C) -> erlmur_server:channel_name(C) =:= "Test" end),
-  lists:foreach(fun(C) -> send_remove_channel(Client,erlmur_server:channel_id(C)) end, Channels).
+  Channels = erlmur_channels:find({name, "Test"}),
+  lists:foreach(fun(C) -> send_remove_channel(Client, erlmur_channels:channel_id(C)) end, Channels).
 
 %%--------------------------------------------------------------------
 %% Help functions

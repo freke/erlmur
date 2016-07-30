@@ -142,7 +142,7 @@ handle_cast({send_udp,Data},State=#state{socket=Socket,use_udp_tunnel=true}) ->
 	error_logger:info_report([{send_udp,udp_tunnel}]),
   ssl:send(Socket, erlmur_message:pack({udp_tunnel, Data})),
   {noreply, State};
-handle_cast({handle_msg, PortNo, EncryptedMsg}, #state{cryptkey=Key,socket=Socket, stats=Stats} = State) ->
+handle_cast({handle_msg, PortNo, EncryptedMsg}, #state{cryptkey=Key, stats=Stats} = State) ->
   {ok, NewKey, Msg} = ocb128_crypto:decrypt(Key, EncryptedMsg),
 	NewStats = erlmur_stats:server_ping({ocb128_crypto:good(NewKey),ocb128_crypto:late(NewKey),ocb128_crypto:lost(NewKey)},Stats),
   NewState = maybe_toggle_udp_tunnel(State#state{stats=NewStats, udp_port=PortNo, cryptkey=NewKey},false),
@@ -299,8 +299,8 @@ handle_control_msg([{channelstate,Prop}|Rest],State) ->
     erlmur_server:channelstate(Prop),
     handle_control_msg(Rest,State);
 handle_control_msg([{channelremove,Prop}|Rest],State) ->
-    User = erlmur_users:fetch_user({client_pid,self()}),
-    erlmur_server:channelremove(Prop,User),
+		Channels = erlmur_channels:find({channel_id,proplists:get_value(channel_id,Prop)}),
+    erlmur_channels:remove(Channels),
     handle_control_msg(Rest,State);
 handle_control_msg([{ping,Prop}|Rest],State = #state{socket=Socket,stats=Stats}) ->
 	S1 = erlmur_stats:packets(
@@ -359,16 +359,16 @@ handle_control_msg([{textmessage,Prop}|Rest], State=#state{socket=_Socket}) ->
 
     DirectTo = erlmur_users:find_user({session,proplists:get_value(session,Prop)}),
 
-    ParentChannels = erlmur_channels:find_by_id(proplists:get_value(tree_id,Prop)),
-    SubChannels = erlmur_channels:subchannels(ParentChannels),
-    Channels = erlmur_channels:find_by_id(proplists:get_value(channel_id,Prop)),
+    ParentChannel = erlmur_channels:find({channel_id, proplists:get_value(tree_id,Prop)}),
+    SubChannels = erlmur_channels:subchannels(ParentChannel),
+    Channel = erlmur_channels:find({channel_id, proplists:get_value(channel_id,Prop)}),
 
-    Users = lists:delete(User,erlmur_users:users_in_channel(lists:append(Channels,SubChannels))),
+    Users = lists:delete(User,erlmur_users:users_in_channel(lists:append(Channel,SubChannels))),
 
     error_logger:info_report([{erlmur_client,textmessage},
-			      {parentChannels,ParentChannels},
+			      {parentChannel,ParentChannel},
 			      {subchannels,SubChannels},
-			      {channels,Channels},
+			      {channel,Channel},
 			      {users,Users},
 			      {msg,Msg}]),
 
@@ -400,9 +400,11 @@ send_all_user_states(Socket,Actor) ->
     send_all(Socket,US).
 
 send_all_channel_states(Socket) ->
-    CS = erlmur_server:channelstates(),
-    error_logger:info_report([{erlmur_client,send_all_channels_states},{channel_states,CS}]),
-    send_all(Socket,CS).
+  CS = erlmur_server:channelstates(),
+	NoLinks = lists:map(fun({channelstate,C}) -> {channelstate,lists:keyreplace(links, 1, C, {links, []})} end, CS),
+  send_all(Socket,NoLinks),
+	UpdateLinks = lists:filter(fun({channelstate,C}) -> proplists:get_value(links,C,[]) =/= [] end, CS),
+	send_all(Socket,UpdateLinks).
 
 send_all(Socket,Msg) ->
     lists:foreach(fun(K) ->
