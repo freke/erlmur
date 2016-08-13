@@ -55,7 +55,7 @@ init(Nodes) ->
   ets:new(user_counters, [set, {keypos, #counter_entry.id}, named_table, public]),
 	ets:insert(user_counters, #counter_entry{id=userid, value=0}),
   ets:insert(user_counters, #counter_entry{id=sessionid, value=0}),
-	[user].
+	ok = mnesia:wait_for_tables([user],5000).
 
 %%--------------------------------------------------------------------
 %% @doc

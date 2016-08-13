@@ -15,7 +15,7 @@
 
 
 erlmur_user_test_() ->
-    [{"Default values then started",?setup(fun  init/1)},
+    [{"Default user values then started",?setup(fun  init/1)},
      {"Select user by id",?setup(fun select_by_id/1)},
      {"Add one user",?setup(fun add_user/1)},
      {"Move user to channel",?setup(fun move_user_to_channel/1)},

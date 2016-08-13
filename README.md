@@ -1,7 +1,5 @@
 # erlmur
 
-[![Build Status](https://travis-ci.org/freke/erlmur.png?branch=master)](https://travis-ci.org/freke/erlmur)
-
 mumble (murmur) server written in erlang.
 
 currently only with the most basic functionality, and all settings hardcoded.

@@ -18,7 +18,7 @@
     remove/1,
     name/1,
     channel_id/1,
-		subchannels/1
+		linked/1
   ]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
@@ -45,7 +45,9 @@ init(Nodes) ->
 
   ets:new(channel_counters, [set, {keypos, #counter_entry.id}, named_table, public]),
   ets:insert(channel_counters, #counter_entry{id=channelid, value=-1}),
-	[channel].
+
+	ok = mnesia:wait_for_tables([channel],5000),
+	add(new("Root"),[]).
 
 name(Channel) when is_record(Channel,channel) ->
   Channel#channel.name.
@@ -63,41 +65,9 @@ channelstates() ->
 	end,
   mnesia:activity(transaction, F).
 
-%%--------------------------------------------------------------------
-%% @doc
-%% @spec
-%% @end
-%%--------------------------------------------------------------------
-add(Name) ->
-  ChannelId = ets:update_counter(channel_counters, channelid, {#counter_entry.value, 1}),
-  #channel{
-    name=Name,
-    channel_id=ChannelId
-  }.
-
 channelstate(PropList) ->
-	Channel = channelstate(find({channel_id, proplists:get_value(channel_id,PropList)}),PropList),
+	Channel = add(find({channel_id, proplists:get_value(channel_id,PropList)}),PropList),
 	erlmur_channel_feed:notify({update, lists:keyreplace(channel_id,1,PropList,{channel_id,Channel#channel.channel_id})}).
-
-channelstate([], PropList) ->
-	Channel = add(proplists:get_value(name, PropList)),
-	channelstate(Channel, PropList);
-channelstate([Channel], PropList) ->
-	channelstate(Channel, PropList);
-channelstate(Channel, []) ->
-	F = fun() ->
-		mnesia:write(channel, Channel, write)
-	end,
-  mnesia:activity(transaction, F),
-	Channel;
-channelstate(Channel, [{parent,Parent}|Rest]) ->
-	channelstate(Channel#channel{parent=Parent},Rest);
-channelstate(Channel, [{links_add,AddLinks}|Rest]) ->
-	channelstate(Channel#channel{links=lists:umerge(lists:sort(AddLinks) , Channel#channel.links)}, Rest);
-channelstate(Channel, [{links_remove,DelLinks}|Rest]) ->
-	channelstate(Channel#channel{links=lists:subtract(Channel#channel.links, DelLinks)}, Rest);
-channelstate(Channel, [_|Rest]) ->
-	channelstate(Channel,Rest).
 
 find({channel_id, ChannelId}) ->
   Match = ets:fun2ms(fun(X = #channel{channel_id=ID}) when ChannelId =:= ID -> X end),
@@ -137,9 +107,35 @@ filter(Filter) ->
 	end,
   mnesia:activity(transaction, F).
 
-subchannels(_Channel) ->
+linked(Channel) ->
 	[].
 
 %%--------------------------------------------------------------------
 %% Internal
 %%--------------------------------------------------------------------
+new(Name) ->
+  ChannelId = ets:update_counter(channel_counters, channelid, {#counter_entry.value, 1}),
+  #channel{
+    name=Name,
+    channel_id=ChannelId
+  }.
+
+add([], PropList) ->
+	Channel = new(proplists:get_value(name, PropList)),
+	add(Channel, PropList);
+add([Channel], PropList) ->
+	add(Channel, PropList);
+add(Channel, []) ->
+	F = fun() ->
+		mnesia:write(channel, Channel, write)
+	end,
+  mnesia:activity(transaction, F),
+	Channel;
+add(Channel, [{parent,Parent}|Rest]) ->
+	add(Channel#channel{parent=Parent},Rest);
+add(Channel, [{links_add,AddLinks}|Rest]) ->
+	add(Channel#channel{links=lists:umerge(lists:sort(AddLinks) , Channel#channel.links)}, Rest);
+add(Channel, [{links_remove,DelLinks}|Rest]) ->
+	add(Channel#channel{links=lists:subtract(Channel#channel.links, DelLinks)}, Rest);
+add(Channel, [_|Rest]) ->
+	add(Channel,Rest).
