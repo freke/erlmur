@@ -55,7 +55,7 @@ init(Nodes) ->
   ets:new(user_counters, [set, {keypos, #counter_entry.id}, named_table, public]),
 	ets:insert(user_counters, #counter_entry{id=userid, value=0}),
   ets:insert(user_counters, #counter_entry{id=sessionid, value=0}),
-	[user].
+	ok = mnesia:wait_for_tables([user],5000).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -319,7 +319,7 @@ users_in_channel([]) ->
 users_in_channel([Channel|Channels]) ->
   lists:append(users_in_channel(Channel),users_in_channel(Channels));
 users_in_channel(Channel) ->
-  ChannelId = erlmur_channels:channel_id(Channel),
+  ChannelId = erlmur_channel:channel_id(Channel),
   Match = ets:fun2ms(fun(X = #user{channel_id=C}) when ChannelId =:= C -> X end),
   F = fun() ->
 		mnesia:select(user, Match)

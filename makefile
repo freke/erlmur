@@ -9,6 +9,7 @@ TEST_DATA_DIR = test/erlmur_SUITE_data
 all: compile test
 
 compile:
+	$(DOCKER) mkdir -p include
 	$(REBAR) compile
 
 test: dialyzer xref eunit ct
