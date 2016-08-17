@@ -319,7 +319,7 @@ users_in_channel([]) ->
 users_in_channel([Channel|Channels]) ->
   lists:append(users_in_channel(Channel),users_in_channel(Channels));
 users_in_channel(Channel) ->
-  ChannelId = erlmur_channels:channel_id(Channel),
+  ChannelId = erlmur_channel:channel_id(Channel),
   Match = ets:fun2ms(fun(X = #user{channel_id=C}) when ChannelId =:= C -> X end),
   F = fun() ->
 		mnesia:select(user, Match)

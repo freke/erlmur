@@ -1,32 +1,24 @@
-%%%-------------------------------------------------------------------
-%%% @author David AAberg <davabe@hotmail.com>
-%%% @copyright (C) 2013,
-%%% @doc
-%%%
-%%% @end
-%%% Created :  1 Apr 2013 by David AAberg <davabe@hotmail.com>
-%%%-------------------------------------------------------------------
 -module(erlmur_channels).
 
 -export(
 	[
 		init/1,
+		store/1,
+		find/1,
+		channels/0,
     channelstate/1,
-    find/1,
     channelstates/0,
     filter/1,
-    remove/1,
-    name/1,
-    channel_id/1,
-		linked/1
+    remove/1
   ]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
 -include_lib("record_info/include/record_info.hrl").
 
+-include("erlmur_channel.hrl").
+
 -export_record_info([channel]).
 
--record(channel,{channel_id,parent,name,links=[]}).
 -record(counter_entry, {id, value=0}).
 
 %%--------------------------------------------------------------------
@@ -43,31 +35,14 @@ init(Nodes) ->
 		  {type, set}
     ]),
 
-  ets:new(channel_counters, [set, {keypos, #counter_entry.id}, named_table, public]),
-  ets:insert(channel_counters, #counter_entry{id=channelid, value=-1}),
-
 	ok = mnesia:wait_for_tables([channel],5000),
-	add(new("Root"),[]).
+	save(erlmur_channel:new(root),[]).
 
-name(Channel) when is_record(Channel,channel) ->
-  Channel#channel.name.
-
-channel_id(Channel) when is_record(Channel,channel) ->
-  Channel#channel.channel_id.
-
-channelstates() ->
-  F = fun() ->
-		mnesia:foldl(fun(C, Acc) ->
-        [{channelstate,[{permissions,16#f07ff}|record_info:record_to_proplist(C, ?MODULE)]} | Acc]
-		  end,
-			[],
-			channel)
+store(Channel) ->
+	F = fun() ->
+		mnesia:write(channel, Channel, write)
 	end,
   mnesia:activity(transaction, F).
-
-channelstate(PropList) ->
-	Channel = add(find({channel_id, proplists:get_value(channel_id,PropList)}),PropList),
-	erlmur_channel_feed:notify({update, lists:keyreplace(channel_id,1,PropList,{channel_id,Channel#channel.channel_id})}).
 
 find({channel_id, ChannelId}) ->
   Match = ets:fun2ms(fun(X = #channel{channel_id=ID}) when ChannelId =:= ID -> X end),
@@ -81,6 +56,26 @@ find({name, Name}) ->
 		mnesia:select(channel, Match)
 	end,
   mnesia:activity(transaction, F).
+
+channels() ->
+	F = fun() ->
+		mnesia:dirty_match_object(#channel{_ = '_'})
+	end,
+  mnesia:activity(transaction, F).
+
+channelstates() ->
+  F = fun() ->
+		mnesia:foldl(fun(C, Acc) ->
+        [{channelstate,[{permissions,16#f07ff}|record_info:record_to_proplist(C, ?MODULE)]} | Acc]
+		  end,
+			[],
+			channel)
+	end,
+  mnesia:activity(transaction, F).
+
+channelstate(PropList) ->
+	Channel = save(find({channel_id, proplists:get_value(channel_id,PropList)}),PropList),
+	erlmur_channel_feed:notify({update, lists:keyreplace(channel_id,1,PropList,{channel_id,Channel#channel.channel_id})}).
 
 remove([]) ->
 	ok;
@@ -107,35 +102,30 @@ filter(Filter) ->
 	end,
   mnesia:activity(transaction, F).
 
-linked(Channel) ->
-	[].
-
 %%--------------------------------------------------------------------
 %% Internal
 %%--------------------------------------------------------------------
-new(Name) ->
-  ChannelId = ets:update_counter(channel_counters, channelid, {#counter_entry.value, 1}),
-  #channel{
-    name=Name,
-    channel_id=ChannelId
-  }.
-
-add([], PropList) ->
-	Channel = new(proplists:get_value(name, PropList)),
-	add(Channel, PropList);
-add([Channel], PropList) ->
-	add(Channel, PropList);
-add(Channel, []) ->
-	F = fun() ->
-		mnesia:write(channel, Channel, write)
-	end,
-  mnesia:activity(transaction, F),
+save([], PropList) ->
+	Channel = erlmur_channel:new(proplists:get_value(name, PropList)),
+	save(Channel, PropList);
+save([Channel], PropList) ->
+	save(Channel, PropList);
+save(Channel, []) ->
+	store(Channel),
 	Channel;
-add(Channel, [{parent,Parent}|Rest]) ->
-	add(Channel#channel{parent=Parent},Rest);
-add(Channel, [{links_add,AddLinks}|Rest]) ->
-	add(Channel#channel{links=lists:umerge(lists:sort(AddLinks) , Channel#channel.links)}, Rest);
-add(Channel, [{links_remove,DelLinks}|Rest]) ->
-	add(Channel#channel{links=lists:subtract(Channel#channel.links, DelLinks)}, Rest);
-add(Channel, [_|Rest]) ->
-	add(Channel,Rest).
+save(Channel, [{parent,Parent}|Rest]) ->
+	save(erlmur_channel:parent(Parent, Channel),Rest);
+save(Channel, [{links_add,AddLinks}|Rest]) ->
+	save(lists:foldl(
+		fun(ChannelId, Channel) ->
+			[C2] = find({channel_id, ChannelId}),
+			store(erlmur_channel:link(ChannelId, Channel)),
+			erlmur_channel:link(erlmur_channel:channel_id(Channel), C2)
+		end,
+		Channel,
+		AddLinks
+		), Rest);
+save(Channel, [{links_remove,DelLinks}|Rest]) ->
+	save(Channel#channel{links=lists:subtract(Channel#channel.links, DelLinks)}, Rest);
+save(Channel, [_|Rest]) ->
+	save(Channel,Rest).

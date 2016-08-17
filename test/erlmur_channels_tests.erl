@@ -9,41 +9,56 @@
 erlmur_hannels_test_() ->
   [
     {"Default channels values then started",?setup(fun  init_test/1)},
-    {"Find channel",?setup(fun  find_test/1)}
+    {"Find channel",?setup(fun  find_test/1)},
+    {"Link channels",?setup(fun  link_test/1)}
   ].
 
 %%%%%%%%%%%%%%%%%%%%%%%
 %%% SETUP FUNCTIONS %%%
 %%%%%%%%%%%%%%%%%%%%%%%
 start() ->
+  meck:new(erlmur_channel_feed),
   application:start(mnesia),
   erlmur_channels:init([node()]).
 
 stop(_) ->
-  ets:delete(channel_counters),
-  application:stop(mnesia).
+  application:stop(mnesia),
+  meck:unload(erlmur_channel_feed).
 
 
 %%%%%%%%%%%%%%%%%%%%
 %%% ACTUAL TESTS %%%
 %%%%%%%%%%%%%%%%%%%%
 init_test(_) ->
-  [{channelstate, RootChannel}] = erlmur_channels:channelstates(),
-  Name = proplists:get_value(name, RootChannel),
-  Id = proplists:get_value(channel_id, RootChannel),
-  Parent = proplists:get_value(parent, RootChannel),
+  [RootChannel] = erlmur_channels:channels(),
   [
-    ?_assertEqual("Root", Name),
-    ?_assertEqual(0, Id),
-    ?_assertEqual(undefined, Parent)
+    ?_assertEqual("Root", erlmur_channel:name(RootChannel)),
+    ?_assertEqual(0, erlmur_channel:channel_id(RootChannel)),
+    ?_assertEqual(undefined, erlmur_channel:parent(RootChannel))
   ].
 
 find_test(_) ->
-  Channel1 = erlmur_channels:find({channel_id,0}),
-  Channel2 = erlmur_channels:find({name,"Root"}),
+  Ch1 = erlmur_channel:parent(0, erlmur_channel:new("Ch1")),
+  erlmur_channels:store(Ch1),
   [
-    ?_assertEqual(Channel1, Channel2)
+    ?_assertEqual(erlmur_channels:find({channel_id, 0}), erlmur_channels:find({name, "Root"})),
+    ?_assertEqual([Ch1], erlmur_channels:find({channel_id, erlmur_channel:channel_id(Ch1)})),
+    ?_assertEqual([Ch1], erlmur_channels:find({name, "Ch1"}))
   ].
+
+link_test(_) ->
+  meck:expect(erlmur_channel_feed, notify, fun(_) -> ok end),
+  Ch1 = erlmur_channel:parent(0, erlmur_channel:new("Ch1")),
+  Ch2 = erlmur_channel:parent(0, erlmur_channel:new("Ch2")),
+  erlmur_channels:store(Ch1),
+  erlmur_channels:store(Ch2),
+  erlmur_channels:channelstate([{channel_id,erlmur_channel:channel_id(Ch1)},{links_add,[erlmur_channel:channel_id(Ch2)]}]),
+  [
+    ?_assertEqual([erlmur_channel:channel_id(Ch2)], erlmur_channel:linked(hd(erlmur_channels:find({name, "Ch1"})))),
+    ?_assertEqual([erlmur_channel:channel_id(Ch1)], erlmur_channel:linked(hd(erlmur_channels:find({name, "Ch2"})))),
+    ?_assert(meck:validate(erlmur_channel_feed))
+  ].
+
 %%%%%%%%%%%%%%%%%%%%%%
 %%% HELP FUNCTIONS %%%
 %%%%%%%%%%%%%%%%%%%%%%

@@ -360,7 +360,7 @@ handle_control_msg([{textmessage,Prop}|Rest], State=#state{socket=_Socket}) ->
     DirectTo = erlmur_users:find_user({session,proplists:get_value(session,Prop)}),
 
     ParentChannel = erlmur_channels:find({channel_id, proplists:get_value(tree_id,Prop)}),
-    LinkedChannels = erlmur_channels:linked(ParentChannel),
+    LinkedChannels = erlmur_channel:linked(ParentChannel),
     Channel = erlmur_channels:find({channel_id, proplists:get_value(channel_id,Prop)}),
 
     Users = lists:delete(User,erlmur_users:users_in_channel(lists:append(Channel, LinkedChannels))),

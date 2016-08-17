@@ -276,7 +276,7 @@ handle_cast({voice_data,Type,16#00,Pid,Counter,Voice,Positional},State) ->
     User = erlmur_users:fetch_user({client_pid,Pid}),
     Sid = erlmur_users:session(User),
     ChannelId = erlmur_users:channel_id(User),
-		LinkedChannels = erlmur_channels:linked(ChannelId),
+		LinkedChannels = erlmur_channel:linked(ChannelId),
     Users = lists:filter(fun(U) -> erlmur_users:session(U) =/= Sid end, erlmur_users:find_user({channel_id,ChannelId})),
     C = erlmur_varint:encode(Counter),
     EncodedSid = erlmur_varint:encode(Sid),
