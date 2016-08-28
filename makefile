@@ -47,7 +47,7 @@ upgrade:
 	$(REBAR) upgrade
 
 shell: priv/key.pem priv/cert.pem
-	$(DOCKER) /bin/bash -c 'epmd -daemon; rebar3 shell --name erlmur@$$(hostname -i) --setcookie testcookie --apps erlmur'
+	$(DOCKER) /bin/bash -c 'epmd -daemon; rebar3 shell --apps erlmur'
 
 auto: priv/key.pem priv/cert.pem
 	$(REBAR) auto
