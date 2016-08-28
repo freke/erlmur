@@ -12,8 +12,8 @@ services:
       - .:/src/erlmur
       - rebar3:/root/.cache/rebar3
     working_dir: /src/erlmur
-#    environment:
-#     - DEBUG=1
+    #environment:
+    # - DEBUG=1
     command: rebar3 shell
 
 volumes:
