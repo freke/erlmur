@@ -4,10 +4,6 @@ key: priv/cert.pem priv/key.pem
 
 test_key: $(TEST_DATA_DIR)/cert.pem $(TEST_DATA_DIR)/key.pem
 
-
-
-
-
 priv/cert.pem: priv/key.pem
 
 priv/key.pem:

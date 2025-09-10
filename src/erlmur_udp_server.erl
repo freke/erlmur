@@ -100,7 +100,7 @@ handle_info({udp, _Socket, IP, PortNo, EncryptedMsg}, State) ->
         {ok, Pid} ->
             Pid ! {udp, IP, PortNo, EncryptedMsg, false};
         {ip_matches, []} ->
-            logger:warning("No session found for UDP packet from ~p:~p", [IP, PortNo]);
+            logger:debug("No session found for UDP packet from ~p:~p", [IP, PortNo]);
         {ip_matches, Pids} ->
             lists:foreach(
                 fun(SessionPid) ->

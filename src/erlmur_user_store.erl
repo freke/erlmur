@@ -70,10 +70,6 @@ remove(UserId, SessionId, Actor, Reason, Ban) ->
     F = fun() -> mnesia:delete({user, UserId}) end,
     mnesia:activity(transaction, F).
 
-unregister(UserId) ->
-    F = fun() -> mnesia:delete({registered_user, UserId}) end,
-    mnesia:activity(transaction, F).
-
 add(Name) ->
     UserId = erlmur_id:new_user_id(),
     User =

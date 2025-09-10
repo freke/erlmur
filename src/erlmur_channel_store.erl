@@ -32,7 +32,7 @@ including their links and ACLs, and interacts with Mnesia for persistence.
 
 -doc "Initializes the system and ensures the root channel exists.".
 
--spec init([node()]) -> ok.
+-spec init([node()]) -> [atom()].
 init(Nodes) ->
     mnesia:create_table(
         channel,
@@ -67,6 +67,7 @@ add(Updates) when is_map(Updates) ->
         Empty = #channel{id = ChannelId},
         Clean = maps:without([links_add, links_remove], Updates),
         Channel0 = merge_channel(Empty, Clean),
+        logger:debug("Merge ~p~nand ~p~nresult ~p", [Empty, Clean, Channel0]),
 
         RequestedLinks =
             sets:from_list(
@@ -75,9 +76,9 @@ add(Updates) when is_map(Updates) ->
         {ValidLinks, _} = sync_backlinks(ChannelId, sets:new(), RequestedLinks),
 
         FinalChannel = Channel0#channel{links = ValidLinks},
+        logger:info("New Channel created ~p", [FinalChannel]),
         mnesia:write(FinalChannel),
 
-        maybe_notify_update(#channel{}, FinalChannel),
         FinalChannel
     end,
     mnesia:activity(transaction, F).
@@ -133,7 +134,6 @@ update(ChannelId, Updates) when is_integer(ChannelId), is_map(Updates) ->
         FinalChannel = Channel0#channel{links = NewLinks},
 
         mnesia:write(FinalChannel),
-        maybe_notify_update(Old, FinalChannel),
         FinalChannel
     end,
     mnesia:activity(transaction, F).
@@ -154,7 +154,6 @@ remove(ChannelId, _Actor) ->
         end
     end,
     mnesia:activity(transaction, F),
-    erlmur_channel_feed:notify({removed, ChannelId}),
     ok.
 
 -doc "Returns a list of channels matching a given filter function.".
@@ -236,18 +235,6 @@ field_index(Field, [Field | _T], Index) ->
 field_index(Field, [_H | T], Index) ->
     field_index(Field, T, Index + 1).
 
-maybe_notify_update(Old, New) ->
-    case Old =/= New of
-        true ->
-            AddedLinks = sets:subtract(New#channel.links, Old#channel.links),
-            RemovedLinks = sets:subtract(Old#channel.links, New#channel.links),
-            erlmur_channel_feed:notify(
-                {update, New, sets:to_list(AddedLinks), sets:to_list(RemovedLinks)}
-            );
-        false ->
-            ok
-    end.
-
 sync_backlinks(ChannelId, OldLinks, NewLinks) ->
     Added = sets:subtract(NewLinks, OldLinks),
     Removed = sets:subtract(OldLinks, NewLinks),
@@ -275,3 +262,31 @@ sync_backlinks(ChannelId, OldLinks, NewLinks) ->
         ),
 
     {sets:from_list(EffectiveAdd), sets:from_list(EffectiveRemove)}.
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+merge_channel_simple_update_test() ->
+    Channel = #channel{id = 1, name = <<"Original Name">>},
+    Updates = #{name => <<"New Name">>, description => <<"A Description">>},
+    Expected = Channel#channel{name = <<"New Name">>, description = <<"A Description">>},
+    ?assertEqual(Expected, merge_channel(Channel, Updates)).
+
+merge_channel_ignores_special_keys_test() ->
+    Channel = #channel{id = 1, name = <<"Original Name">>},
+    Updates = #{name => <<"New Name">>, links_add => [2], links_remove => [3]},
+    Expected = Channel#channel{name = <<"New Name">>},
+    ?assertEqual(Expected, merge_channel(Channel, Updates)).
+
+merge_channel_ignores_unknown_keys_test() ->
+    Channel = #channel{id = 1, name = <<"Original Name">>},
+    Updates = #{name => <<"New Name">>, unknown_key => "some value"},
+    Expected = Channel#channel{name = <<"New Name">>},
+    ?assertEqual(Expected, merge_channel(Channel, Updates)).
+
+merge_channel_empty_updates_test() ->
+    Channel = #channel{id = 1, name = <<"Original Name">>},
+    Updates = #{},
+    ?assertEqual(Channel, merge_channel(Channel, Updates)).
+
+-endif.

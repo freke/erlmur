@@ -11,7 +11,9 @@ handle(Session, <<Type:3, Target:5, Rest/binary>>) ->
     logger:debug("DataMsg~nType ~p~nTarget ~p", [Type, Target]),
     {Counter, R} = erlmur_varint:decode(Rest),
     {Voice, Positional} = split_voice_positional(Type, R),
-    gen_statem:cast(Session, {voice_data, Type, Target, Counter, Voice, Positional}).
+    erlmur_session:voice_data(
+        Session#session.session_pid, {voice_data, Type, Target, Counter, Voice, Positional}
+    ).
 
 %%%%%%
 %%% Private

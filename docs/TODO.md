@@ -66,17 +66,17 @@ With the refactoring complete, we can now build the missing features from the de
 
 - [ ] **5. Create ACL Engine Module:**
   - **File:** `src/erlmur_acl.erl` (New file)
-  - **Task:** Create the stateless ACL engine module. Start with a placeholder `check/3` function that returns `allow` by
-    default.
+  - **Task:** Create the stateless ACL engine module.
+    Start with a placeholder `query_permissions/2` function that returns `allow` by default.
 
 - [ ] **6. Integrate ACL Checks:**
   - **File:** `src/erlmur_message_handler.erl`
   - **Task:** For a single privileged action (e.g., handling a `UserState` message that mutes another user), add a call
-    to `erlmur_acl:check/3` before processing the request.
+    to `erlmur_acl:query_permissions/2` before processing the request.
 
 - [ ] **7. Implement ACL Logic:**
   - **File:** `src/erlmur_acl.erl`
-  - **Task:** Fully implement the permission resolution logic inside the `check/3` function. This involves reading ACL rules
+  - **Task:** Fully implement the permission resolution logic inside the `query_permissions/2` function. This involves reading ACL rules
     from `erlmur_channels`, user groups from `erlmur_users`, and applying the Mumble inheritance rules.
 
 - [ ] **8. Build Public API Facade:**

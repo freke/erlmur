@@ -7,7 +7,7 @@ This module serializes Erlang records into binary format for network transmissio
 and deserializes incoming binary data into Erlang records.
 """.
 
--export([send/2, handle/2]).
+-export([send/2, decode/1, handle_message/2]).
 
 -include("Mumble_gpb.hrl").
 -include("erlmur.hrl").
@@ -61,6 +61,24 @@ and deserializes incoming binary data into Erlang records.
     {?MSG_PERMISSIONQUERY, #'PermissionQuery'{}}
 ]).
 
+-doc """
+Sends a message to a client session.
+
+This function packs a given message into the Mumble TCP protocol format and sends it
+to the specified session process. The message to be sent is determined by the second
+argument, which can be one of several atoms or tuples corresponding to different
+Mumble protocol messages.
+""".
+-spec send(
+    SessionPid :: pid(),
+    Msg ::
+        version
+        | {crypto_setup, any()}
+        | {channels, list()}
+        | {users, list()}
+        | {server_sync, integer()}
+        | {codec_version, any()}
+) -> ok.
 send(SessionPid, version) ->
     ServerVersion = erlmur_server:version(),
     {V1, V2} = erlmur_protocol_version:encode(ServerVersion),
@@ -149,63 +167,35 @@ send(SessionPid, {server_sync, SessionId}) ->
         welcome_text = ServerConfig#server_config.welcome_text,
         session = SessionId
     },
-    erlmur_session:send(SessionPid, pack(ServerSync)).
+    erlmur_session:send(SessionPid, pack(ServerSync));
+send(SessionPid, {codec_version, CodecVersion}) ->
+    CodecVersionMsg = #'CodecVersion'{
+        alpha = CodecVersion#codec_version.alpha,
+        beta = CodecVersion#codec_version.beta,
+        prefer_alpha = CodecVersion#codec_version.prefer_alpha,
+        opus = CodecVersion#codec_version.opus
+    },
+    Msg = pack(CodecVersionMsg),
+    erlmur_session:send(SessionPid, Msg).
 
-handle(Session, Msg) ->
-    unpack(Session, Msg).
+-doc """
+Decodes a binary payload from a TCP message into a list of Mumble message records.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-pack(MessageRecord) ->
-    case find_msg_by_record(MessageRecord) of
-        {ok, Tag, _} ->
-            Bin = 'Mumble_gpb':encode_msg(MessageRecord),
-            encode_message(Tag, Bin);
-        error ->
-            error({unknown_type, MessageRecord})
-    end.
+The function processes the binary data and returns a list of decoded records.
+If the payload is incomplete or contains an unknown message type, it logs an error
+and attempts to decode the rest of the payload.
+""".
+-spec decode(binary()) -> [any()].
+decode(Data) ->
+    unpack(Data, []).
 
-unpack(_Session, <<>>) ->
-    ok;
-unpack(
-    Session,
-    <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer, Msg:Len/binary, Rest/binary>>
-) ->
-    case find_msg_by_tag(Type) of
-        {ok, Type, Record} ->
-            logger:debug("unpack ~p", [element(1, Record)]),
-            handle_message(Session, 'Mumble_gpb':decode_msg(Msg, element(1, Record)));
-        error ->
-            logger:error("Unable to unpack Msg ~p~nLen ~p~nMsg ~p", [Type, Len, Msg])
-    end,
-    unpack(Session, Rest).
+-doc """
+Handles a decoded Mumble message for a given session.
 
-find_msg_by_record(Record) ->
-    RecordName = element(1, Record),
-    case lists:search(fun({_Tag, R}) -> is_record(R, RecordName) end, ?MESSAGE_TABLE) of
-        {value, {Tag, _}} ->
-            {ok, Tag, Record};
-        false ->
-            error
-    end.
-
-find_msg_by_tag(Tag) ->
-    lists:foldl(
-        fun
-            ({T, Record}, _Acc) when T =:= Tag ->
-                {ok, Tag, Record};
-            (_, Acc) ->
-                Acc
-        end,
-        error,
-        ?MESSAGE_TABLE
-    ).
-
-encode_message(Type, Msg) when is_binary(Msg) ->
-    Len = byte_size(Msg),
-    <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer, Msg/binary>>.
-
+This function takes a session state and a message record, and performs the
+appropriate action based on the message type.
+""".
+-spec handle_message(any(), any()) -> ok.
 handle_message(
     Session,
     #'Version'{
@@ -229,46 +219,41 @@ handle_message(Session, #'Authenticate'{
     password = Password,
     opus = Opus,
     tokens = Tokens,
-    client_type = IsBot,
+    client_type = Type,
     celt_versions = CeltVersions
 }) ->
     logger:info("Authenticate user ~p", [Username]),
+    T =
+        case Type of
+            0 -> regular;
+            1 -> bot
+        end,
     case erlmur_authenticate:check(Username, Password) of
         {ok, User} ->
             erlmur_server:codecversion(CeltVersions, Opus),
-            erlmur_session:user(Session#session.session_pid, User, Tokens, IsBot)
+            erlmur_session:user(Session#session.session_pid, User, Tokens, T)
     end;
 handle_message(
     Session,
-    UserState = #'UserState'{
-        user_id = UserId,
-        name = Name,
-        channel_id = ChannelId,
-        mute = Mute,
-        deaf = Deaf,
-        suppress = Suppress,
-        self_mute = SelfMute,
-        self_deaf = SelfDeaf,
-        texture = Texture,
-        plugin_context = PluginContext,
-        plugin_identity = PluginIdentity,
-        comment = Comment,
-        priority_speaker = PrioritySpeaker,
-        recording = Recording,
-        temporary_access_tokens = TemporaryAccessTokens,
-        listening_channel_add = ListeningChannelAdd,
-        listening_channel_remove = ListeningChannelRemove,
-        listening_volume_adjustment = ListeningVolumeAdjustment
-    }
+    #'UserState'{session = SessionId, channel_id = ChannelId} = UserState
 ) ->
-    logger:info("Got UserState ~p", [UserState]),
-    logger:warning("TODO: Handle UserState update");
-handle_message(Session, UserStats = #'UserStats'{}) ->
+    if
+        SessionId == Session#session.id andalso ChannelId =/= undefined ->
+            erlmur_session:move_to_channel(Session#session.session_pid, ChannelId);
+        true ->
+            logger:info("Got UserState ~p", [UserState]),
+            logger:warning("TODO: Handle UserState update")
+    end;
+handle_message(_Session, UserStats = #'UserStats'{}) ->
     logger:info("Got UserStats ~p", [UserStats]),
     logger:warning("TODO: Handle UserStats");
-handle_message(Session, PermissionQuery = #'PermissionQuery'{}) ->
-    logger:info("Got PermissionQuery ~p", [PermissionQuery]),
-    logger:warning("TODO: Handle PermissionQuery update");
+handle_message(Session, #'PermissionQuery'{channel_id = ChannelId}) ->
+    logger:debug("PermissionQuery ~p", [ChannelId]),
+    {PermChannelId, Permissions} = erlmur_acl:query_permissions(
+        ChannelId, Session#session.user#user.id
+    ),
+    Response = #'PermissionQuery'{channel_id = PermChannelId, permissions = Permissions},
+    erlmur_session:send(Session#session.session_pid, pack(Response));
 handle_message(
     Session,
     #'Ping'{
@@ -302,4 +287,166 @@ handle_message(
         },
 
     Msg = pack(Pong),
-    erlmur_session:send(Session#session.session_pid, Msg).
+    erlmur_session:send(Session#session.session_pid, Msg);
+handle_message(_Session, ChannelState = #'ChannelState'{channel_id = undefined}) ->
+    logger:info("Request to create channel: ~p", [ChannelState]),
+    % TODO: Check permissions
+    ChannelMap = channel_state_to_map(ChannelState),
+    FilteredMap = maps:without([links, links_add, links_remove], ChannelMap),
+    NewChannel = erlmur_channel_store:add(FilteredMap),
+    broadcast_channel(NewChannel),
+    ok;
+handle_message(_Session, ChannelState = #'ChannelState'{channel_id = ChannelId}) ->
+    logger:info("Request to update channel ~p: ~p", [ChannelId, ChannelState]),
+    % TODO: Check permissions
+    ChannelMap = channel_state_to_map(ChannelState),
+    FilteredMap = maps:without([links, links_add, links_remove], ChannelMap),
+    UpdatedChannel = erlmur_channel_store:update(ChannelId, FilteredMap),
+    broadcast_channel(UpdatedChannel),
+    ok;
+handle_message(#session{user = #user{id = Id}}, #'ChannelRemove'{channel_id = ChannelId}) ->
+    logger:info("Request to remove channel ~p", [ChannelId]),
+    % TODO: Check permissions
+    erlmur_channel_store:remove(ChannelId, Id),
+    broadcast_channel_removal(ChannelId),
+    ok;
+handle_message(Session, Message) ->
+    logger:warning("Unhandled message ~p", [Message]).
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+broadcast_channel(Channel) ->
+    AllSessionPids = pg:get_members(pg_erlmur, users),
+    ChannelState = #'ChannelState'{
+        channel_id = Channel#channel.id,
+        parent = Channel#channel.parent_id,
+        name = Channel#channel.name,
+        description = Channel#channel.description,
+        temporary = Channel#channel.temporary,
+        position = Channel#channel.position,
+        description_hash = Channel#channel.description_hash,
+        max_users = Channel#channel.max_users,
+        is_enter_restricted = Channel#channel.is_enter_restricted,
+        can_enter = Channel#channel.can_enter
+    },
+    Msg = pack(ChannelState),
+    lists:foreach(
+        fun(SessionPid) ->
+            erlmur_session:send(SessionPid, Msg)
+        end,
+        AllSessionPids
+    ),
+
+    case sets:is_empty(Channel#channel.links) of
+        false ->
+            LinkChannelState = #'ChannelState'{
+                channel_id = Channel#channel.id,
+                links = sets:to_list(Channel#channel.links)
+            },
+            LinkMsg = pack(LinkChannelState),
+            lists:foreach(
+                fun(SessionPid) ->
+                    erlmur_session:send(SessionPid, LinkMsg)
+                end,
+                AllSessionPids
+            );
+        true ->
+            ok
+    end.
+
+broadcast_channel_removal(ChannelId) ->
+    AllSessionPids = pg:get_members(pg_erlmur, users),
+    ChannelRemove = #'ChannelRemove'{channel_id = ChannelId},
+    Msg = pack(ChannelRemove),
+    lists:foreach(
+        fun(SessionPid) ->
+            erlmur_session:send(SessionPid, Msg)
+        end,
+        AllSessionPids
+    ).
+
+pack(MessageRecord) ->
+    logger:debug("pack ~p", [MessageRecord]),
+    case find_msg_by_record(MessageRecord) of
+        {ok, Tag, _} ->
+            Bin = 'Mumble_gpb':encode_msg(MessageRecord),
+            encode_message(Tag, Bin);
+        error ->
+            error({unknown_type, MessageRecord})
+    end.
+
+unpack(<<>>, Acc) ->
+    lists:reverse(Acc);
+unpack(
+    <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer, Msg:Len/binary, Rest/binary>>,
+    Acc
+) ->
+    case find_msg_by_tag(Type) of
+        {ok, _Type, Record} ->
+            logger:debug("unpack ~p", [element(1, Record)]),
+            Decoded = 'Mumble_gpb':decode_msg(Msg, element(1, Record)),
+            unpack(Rest, [Decoded | Acc]);
+        error ->
+            logger:error("Unable to unpack Msg ~p~nLen ~p~nMsg ~p", [Type, Len, Msg]),
+            unpack(Rest, Acc)
+    end.
+
+find_msg_by_record(Record) ->
+    RecordName = element(1, Record),
+    case lists:search(fun({_Tag, R}) -> is_record(R, RecordName) end, ?MESSAGE_TABLE) of
+        {value, {Tag, _}} ->
+            {ok, Tag, Record};
+        false ->
+            error
+    end.
+
+find_msg_by_tag(Tag) ->
+    lists:foldl(
+        fun
+            ({T, Record}, _Acc) when T =:= Tag ->
+                {ok, Tag, Record};
+            (_, Acc) ->
+                Acc
+        end,
+        error,
+        ?MESSAGE_TABLE
+    ).
+
+encode_message(Type, Msg) when is_binary(Msg) ->
+    Len = byte_size(Msg),
+    <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer, Msg/binary>>.
+
+channel_state_to_map(#'ChannelState'{
+    channel_id = ChannelId,
+    parent = Parent,
+    name = Name,
+    links = Links,
+    description = Description,
+    temporary = Temporary,
+    position = Position,
+    description_hash = DescriptionHash,
+    links_add = LinksAdd,
+    links_remove = LinksRemove,
+    max_users = MaxUsers,
+    is_enter_restricted = IsEnterRestricted,
+    can_enter = CanEnter
+}) ->
+    All = [
+        {id, ChannelId},
+        {parent_id, Parent},
+        {name, Name},
+        {links, Links},
+        {description, Description},
+        {temporary, Temporary},
+        {position, Position},
+        {description_hash, DescriptionHash},
+        {links_add, LinksAdd},
+        {links_remove, LinksRemove},
+        {max_users, MaxUsers},
+        {is_enter_restricted, IsEnterRestricted},
+        {can_enter, CanEnter}
+    ],
+    Filtered = lists:filter(fun({_Key, Value}) -> Value =/= undefined end, All),
+    maps:from_list(Filtered).

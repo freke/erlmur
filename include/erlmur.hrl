@@ -74,6 +74,7 @@
     user_id,
     session_pid :: pid()
 }).
+
 -record(erlmur_session, {id}).
 -record(session, {
     id,
@@ -99,7 +100,7 @@
     stats = #stats{},
     address,
     udp_port,
-    is_bot = false,
+    type = regular :: regular | type,
     use_udp_tunnel = true,
     mumble_protocol = v1_2 :: v1_2 | v1_5
 }).

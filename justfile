@@ -19,7 +19,8 @@ xref:
 	rebar3 xref
 
 eunit:
-	rebar3 eunit
+	rebar3 eunit > test/eunit.log
+	cat test/eunit.log | more
 
 ct:
 	make test_key

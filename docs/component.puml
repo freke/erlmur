@@ -62,14 +62,10 @@ component erlmur_acl <<stateless>> {
 
 package "User" {
     [erlmur_users]
-    [erlmur_user_feed] <<gen_event>>
-    [erlmur_users] --> [erlmur_user_feed]
 }
 
 package "Channel" {
     [erlmur_channels]
-    [erlmur_channel_feed] <<gen_event>>
-    [erlmur_channels] --> [erlmur_channel_feed]
 }
 
 [erlmur_app] --> [erlmur_sup]
@@ -90,8 +86,7 @@ package "Channel" {
 
 [erlmur_session] <--> [erlmur_users]
 [erlmur_session] <--> [erlmur_channels]
-[erlmur_session] <.. [erlmur_channel_feed]
-[erlmur_session] <.. [erlmur_user_feed]
+
 
 [erlmur_transport] --> [erlmur_udp_server]
 [erlmur_transport] --> [ranch_ssl]
