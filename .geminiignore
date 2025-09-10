@@ -1,0 +1,8 @@
+.devenv
+.git
+.jj
+_build
+doc
+*.coverdata
+*.lock
+*.dump

@@ -1,0 +1,107 @@
+@startuml
+title erlmur Component Overview
+
+package "Erlmur" {
+    [erlmur_app] <<application>>
+    [erlmur] <<public_api>>
+}
+
+component erlmur_sup <<supervisor>> {
+}
+
+component erlmur_session_sup <<supervisor>> {
+    port start_session
+}
+
+package "TCP Connection Handling" {
+    [Mumble_gpb.hrl] --> [erlmur_tcp_handler]
+    [erlmur_session] <<ranch_protocol, gen_statem>>
+    [erlmur_session] --> [erlmur_tcp_handler]
+    ssl -- [ranch_ssl]
+    [ranch_ssl] --> [erlmur_session]
+}
+
+package "UDP Conneciton Handling" {
+    udp -- [erlmur_udp_server]
+    [MumbleUDP_gpb.hrl] --> [erlmur_udp_handler]
+    [erlmur_udp_server] <<gen_server>>
+    [erlmur_udp_server] --> [erlmur_udp_handler]
+}
+
+component "Session Management" {
+    port find_session_id
+    port handle_message
+    [erlmur_session] <<gen_server>>
+    [erlmur_transport]
+    [erlmur_stats]
+    [erlmur_session_registry]
+    find_session_id --> [erlmur_session_registry]
+    handle_message --> [erlmur_session]
+    [erlmur_message_handler]
+}
+
+component erlmur_crypto {
+    port encrypt
+    port decrypt
+}
+
+package "Server" {
+  [erlmur_protocol_version]
+  [erlmur_authenticate]
+  [erlmur_config]
+  [erlmur.hrl]
+}
+
+component erlmur_ban <<gen_server>> {
+    port is_banned
+}
+
+component erlmur_acl <<stateless>> {
+    port check
+}
+
+package "User" {
+    [erlmur_users]
+    [erlmur_user_feed] <<gen_event>>
+    [erlmur_users] --> [erlmur_user_feed]
+}
+
+package "Channel" {
+    [erlmur_channels]
+    [erlmur_channel_feed] <<gen_event>>
+    [erlmur_channels] --> [erlmur_channel_feed]
+}
+
+[erlmur_app] --> [erlmur_sup]
+
+[erlmur_sup] --> [erlmur_session_sup]
+[erlmur_sup] --> [erlmur_session]
+[erlmur_sup] --> [erlmur_udp_server]
+[erlmur_sup] --> [erlmur_ban]
+
+[erlmur_session] --> start_session
+[erlmur_tcp_handler] --> handle_message
+[erlmur_session_sup] --> [erlmur_session]
+[erlmur_udp_handler] <--> find_session_id
+[erlmur_udp_handler] --> handle_message
+[erlmur_udp_handler] <--> decrypt
+[erlmur_message_handler] <--> encrypt
+[erlmur_message_handler] --> [erlmur_transport]
+
+[erlmur_session] <--> [erlmur_users]
+[erlmur_session] <--> [erlmur_channels]
+[erlmur_session] <.. [erlmur_channel_feed]
+[erlmur_session] <.. [erlmur_user_feed]
+
+[erlmur_transport] --> [erlmur_udp_server]
+[erlmur_transport] --> [ranch_ssl]
+
+[erlmur_message_handler] --> is_banned
+
+[erlmur_message_handler] --> check
+[erlmur_acl] <--> [erlmur_channels]
+[erlmur_acl] <--> [erlmur_users]
+
+[erlmur] --> [erlmur_users]
+[erlmur] --> [erlmur_channels]
+@enduml

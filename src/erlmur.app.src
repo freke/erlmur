@@ -1,0 +1,20 @@
+{application, erlmur, [
+    {description, ""},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        crypto,
+        public_key,
+        ranch,
+        ssl,
+        mnesia
+    ]},
+    {mod, {erlmur_app, []}},
+    {env, [
+        {cert_pem, "priv/cert.pem"},
+        {key_pem, "priv/key.pem"},
+        {allow_selfsigned, true}
+    ]}
+]}.

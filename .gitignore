@@ -1,0 +1,33 @@
+.env
+.rebar3
+rebar3.crashdump
+_*
+.eunit
+.directory
+*.o
+*.beam
+*.plt
+*.swp
+*.swo
+.erlang.cookie
+erl_crash.dump
+.rebar
+Mnesia*
+log
+*_gpb*
+*.pem
+*.coverdata
+doc
+
+# Devenv
+.devenv*
+devenv.local.nix
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
+
+GEMINI.md
+.gemini

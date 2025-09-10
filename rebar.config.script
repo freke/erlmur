@@ -1,0 +1,6 @@
+{ok, Hostname} = inet:gethostname(),
+{ok, {_,_,_,_,_,A}} = inet:gethostbyname(Hostname).
+lists:keystore(deps_dir, 1, CONFIG, {dist_node, [
+    {setcookie, 'testcookie'},
+    {name, list_to_atom("erlmur@"++inet:ntoa(hd(A)))}
+  ]}).
