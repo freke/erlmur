@@ -83,20 +83,13 @@ add(Name) ->
     logger:info("User added: ~p", [[{id, UserId}, {name, Name}]]),
     User.
 
-update([], User, Actor) ->
-    F = fun() -> mnesia:write(user, User, write) end,
-    mnesia:activity(transaction, F);
-update([{_, undefined} | R], User, Actor) ->
-    update(R, User, Actor);
-update([{channel_id, NewChannel} | R], User, Actor) ->
-    update(R, User#user{channel_id = NewChannel}, Actor);
-update([{name, NewName} | R], User, Actor) ->
-    update(R, User#user{name = NewName}, Actor);
-update([{comment, Comment} | R], User, Actor) ->
-    update(R, User#user{comment = Comment}, Actor);
-update([V | R], User, Actor) ->
-    logger:warning("Unknown update field: ~p", [V]),
-    update(R, User, Actor).
+update(UserId, Updates, _Actor) ->
+    F = fun() ->
+        [OldUser] = mnesia:read(user, UserId),
+        NewUser = apply_user_updates(OldUser, Updates),
+        mnesia:write(NewUser)
+    end,
+    mnesia:activity(transaction, F).
 
 list() ->
     F = fun() -> mnesia:foldl(fun(User, Acc) -> [User | Acc] end, [], user) end,
@@ -119,3 +112,19 @@ move_to_channel(UserId, ChannelId, Actor) ->
 %%--------------------------------------------------------------------
 %% Internal
 %%--------------------------------------------------------------------
+
+apply_user_updates(User, []) ->
+    User;
+apply_user_updates(User, [{_, undefined} | Rest]) ->
+    apply_user_updates(User, Rest);
+apply_user_updates(User, [{channel_id, V} | Rest]) ->
+    apply_user_updates(User#user{channel_id = V}, Rest);
+apply_user_updates(User, [{name, V} | Rest]) ->
+    apply_user_updates(User#user{name = V}, Rest);
+apply_user_updates(User, [{comment, V} | Rest]) ->
+    apply_user_updates(User#user{comment = V}, Rest);
+apply_user_updates(User, [{texture, V} | Rest]) ->
+    apply_user_updates(User#user{texture = V}, Rest);
+apply_user_updates(User, [Unknown | Rest]) ->
+    logger:warning("Unknown update field: ~p", [Unknown]),
+    apply_user_updates(User, Rest).
