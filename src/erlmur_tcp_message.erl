@@ -318,7 +318,7 @@ handle_message(#session{user = #user{id = Id}}, #'ChannelRemove'{channel_id = Ch
     erlmur_channel_store:remove(ChannelId, Id),
     broadcast_channel_removal(ChannelId),
     ok;
-handle_message(Session, Message) ->
+handle_message(_Session, Message) ->
     logger:warning("Unhandled message ~p", [Message]).
 
 %%%===================================================================
@@ -426,7 +426,21 @@ encode_message(Type, Msg) when is_binary(Msg) ->
     Len = byte_size(Msg),
     <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer, Msg/binary>>.
 
-channel_state_to_map(#'ChannelState'{channel_id = ChannelId, parent = Parent, name = Name, links = Links, description = Description, temporary = Temporary, position = Position, description_hash = DescriptionHash, links_add = LinksAdd, links_remove = LinksRemove, max_users = MaxUsers, is_enter_restricted = IsEnterRestricted, can_enter = CanEnter}) ->
+channel_state_to_map(#'ChannelState'{
+    channel_id = ChannelId,
+    parent = Parent,
+    name = Name,
+    links = Links,
+    description = Description,
+    temporary = Temporary,
+    position = Position,
+    description_hash = DescriptionHash,
+    links_add = LinksAdd,
+    links_remove = LinksRemove,
+    max_users = MaxUsers,
+    is_enter_restricted = IsEnterRestricted,
+    can_enter = CanEnter
+}) ->
     All = [
         {id, ChannelId},
         {parent_id, Parent},
@@ -445,7 +459,27 @@ channel_state_to_map(#'ChannelState'{channel_id = ChannelId, parent = Parent, na
     Filtered = lists:filter(fun({_Key, Value}) -> Value =/= undefined end, All),
     maps:from_list(Filtered).
 
-user_state_to_map(#'UserState'{session = Session, actor = Actor, name = Name, user_id = UserId, channel_id = ChannelId, mute = Mute, deaf = Deaf, suppress = Suppress, self_mute = SelfMute, self_deaf = SelfDeaf, texture = Texture, plugin_context = PluginContext, plugin_identity = PluginIdentity, comment = Comment, hash = Hash, comment_hash = CommentHash, texture_hash = TextureHash, priority_speaker = PrioritySpeaker, recording = Recording}) ->
+user_state_to_map(#'UserState'{
+    session = Session,
+    actor = Actor,
+    name = Name,
+    user_id = UserId,
+    channel_id = ChannelId,
+    mute = Mute,
+    deaf = Deaf,
+    suppress = Suppress,
+    self_mute = SelfMute,
+    self_deaf = SelfDeaf,
+    texture = Texture,
+    plugin_context = PluginContext,
+    plugin_identity = PluginIdentity,
+    comment = Comment,
+    hash = Hash,
+    comment_hash = CommentHash,
+    texture_hash = TextureHash,
+    priority_speaker = PrioritySpeaker,
+    recording = Recording
+}) ->
     All = [
         {session, Session},
         {actor, Actor},
