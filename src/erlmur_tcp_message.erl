@@ -233,16 +233,24 @@ handle_message(Session, #'Authenticate'{
             erlmur_server:codecversion(CeltVersions, Opus),
             erlmur_session:user(Session#session.session_pid, User, Tokens, T)
     end;
-handle_message(
-    Session,
-    #'UserState'{session = SessionId, channel_id = ChannelId} = UserState
-) ->
+handle_message(Session, #'UserState'{} = UserState) ->
+    SessionIdInMsg = UserState#'UserState'.session,
+    TargetSessionId =
+        if
+            SessionIdInMsg == undefined ->
+                Session#session.id;
+            true ->
+                SessionIdInMsg
+        end,
+
     if
-        SessionId == Session#session.id andalso ChannelId =/= undefined ->
-            erlmur_session:move_to_channel(Session#session.session_pid, ChannelId);
+        TargetSessionId == Session#session.id ->
+            % This is a self-update.
+            UpdateMap = user_state_to_map(UserState),
+            erlmur_session:update_user_state(Session#session.session_pid, UpdateMap);
         true ->
-            logger:info("Got UserState ~p", [UserState]),
-            logger:warning("TODO: Handle UserState update")
+            % This is an admin updating another user. Requires permission checks.
+            logger:warning("TODO: Handle admin UserState update for session ~p", [TargetSessionId])
     end;
 handle_message(_Session, UserStats = #'UserStats'{}) ->
     logger:info("Got UserStats ~p", [UserStats]),
@@ -418,21 +426,7 @@ encode_message(Type, Msg) when is_binary(Msg) ->
     Len = byte_size(Msg),
     <<Type:16/unsigned-big-integer, Len:32/unsigned-big-integer, Msg/binary>>.
 
-channel_state_to_map(#'ChannelState'{
-    channel_id = ChannelId,
-    parent = Parent,
-    name = Name,
-    links = Links,
-    description = Description,
-    temporary = Temporary,
-    position = Position,
-    description_hash = DescriptionHash,
-    links_add = LinksAdd,
-    links_remove = LinksRemove,
-    max_users = MaxUsers,
-    is_enter_restricted = IsEnterRestricted,
-    can_enter = CanEnter
-}) ->
+channel_state_to_map(#'ChannelState'{channel_id = ChannelId, parent = Parent, name = Name, links = Links, description = Description, temporary = Temporary, position = Position, description_hash = DescriptionHash, links_add = LinksAdd, links_remove = LinksRemove, max_users = MaxUsers, is_enter_restricted = IsEnterRestricted, can_enter = CanEnter}) ->
     All = [
         {id, ChannelId},
         {parent_id, Parent},
@@ -447,6 +441,31 @@ channel_state_to_map(#'ChannelState'{
         {max_users, MaxUsers},
         {is_enter_restricted, IsEnterRestricted},
         {can_enter, CanEnter}
+    ],
+    Filtered = lists:filter(fun({_Key, Value}) -> Value =/= undefined end, All),
+    maps:from_list(Filtered).
+
+user_state_to_map(#'UserState'{session = Session, actor = Actor, name = Name, user_id = UserId, channel_id = ChannelId, mute = Mute, deaf = Deaf, suppress = Suppress, self_mute = SelfMute, self_deaf = SelfDeaf, texture = Texture, plugin_context = PluginContext, plugin_identity = PluginIdentity, comment = Comment, hash = Hash, comment_hash = CommentHash, texture_hash = TextureHash, priority_speaker = PrioritySpeaker, recording = Recording}) ->
+    All = [
+        {session, Session},
+        {actor, Actor},
+        {name, Name},
+        {user_id, UserId},
+        {channel_id, ChannelId},
+        {mute, Mute},
+        {deaf, Deaf},
+        {suppress, Suppress},
+        {self_mute, SelfMute},
+        {self_deaf, SelfDeaf},
+        {texture, Texture},
+        {plugin_context, PluginContext},
+        {plugin_identity, PluginIdentity},
+        {comment, Comment},
+        {hash, Hash},
+        {comment_hash, CommentHash},
+        {texture_hash, TextureHash},
+        {priority_speaker, PrioritySpeaker},
+        {recording, Recording}
     ],
     Filtered = lists:filter(fun({_Key, Value}) -> Value =/= undefined end, All),
     maps:from_list(Filtered).

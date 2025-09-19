@@ -52,7 +52,7 @@ groups() ->
             authenticate_msg_test_case,
             ping_msg_test_case,
             permissionquery_msg_test_case,
-            %userstate_msg_test_case,
+            userstate_msg_test_case,
             %userstats_msg_test_case,
             %userremove_msg_test_case,
             channelstate_msg_test_case
@@ -91,7 +91,13 @@ userstate_msg_test_case(Config) ->
     Client = start_erlmur_client(Config),
     send_version(Client),
     send_authenticate(Client),
-    send_userstate(Client).
+
+    % Test updating the comment
+    NewComment = <<"Hello Erlmur">>,
+    send_userstate(Client, #'UserState'{comment = NewComment}),
+
+    % Test updating self_mute status
+    send_userstate(Client, #'UserState'{self_mute = true}).
 
 userstats_msg_test_case(Config) ->
     Client = start_erlmur_client(Config),
@@ -172,10 +178,11 @@ send_permissionquery({Socket}) ->
     ssl:send(Socket, PermissionqueryMsg),
     get_replies(Socket, ['PermissionQuery']).
 
-send_userstate({Socket}) ->
-    ct:log("Send user state"),
-    UserStateMsg = erlmur_tcp_message:pack(#'UserState'{}),
+send_userstate({Socket}, UpdateRecord) ->
+    ct:log("Send user state with update: ~p", [UpdateRecord]),
+    UserStateMsg = erlmur_tcp_message:pack(UpdateRecord),
     ssl:send(Socket, UserStateMsg),
+    % We expect a broadcast of our own change back
     get_replies(Socket, ['UserState']).
 
 send_userstats({Socket}) ->
@@ -204,16 +211,27 @@ send_remove_channel({Socket}, ChannelId) ->
     ssl:send(Socket, ChannelRemoveMsg),
     get_replies(Socket, ['ChannelRemove']).
 
-get_replies(_Socket, []) ->
-    ok;
 get_replies(Socket, Expected) ->
-    ct:log("Expecting: ~p", [Expected]),
-    {ok, Msg} = ssl:recv(Socket, 0),
-    ct:log("Recieved Msg Bin ~p", [Msg]),
-    Messages = erlmur_tcp_message:decode(Msg),
-    StillExpecting = remove_recived(Messages, Expected),
-    ct:log("Removed ~p Expecting ~p", [Messages, StillExpecting]),
-    get_replies(Socket, StillExpecting).
+    Deadline = erlang:system_time(millisecond) + 2000, % 2 second timeout
+    wait_for_replies(Socket, Expected, Deadline).
+
+wait_for_replies(_Socket, [], _Deadline) ->
+    ok;
+wait_for_replies(Socket, Expected, Deadline) ->
+    Now = erlang:system_time(millisecond),
+    Timeout = erlang:max(0, Deadline - Now),
+    case ssl:recv(Socket, 0, Timeout) of
+        {ok, Msg} ->
+            ct:log("Received Msg Bin ~p", [Msg]),
+            Messages = erlmur_tcp_message:decode(Msg),
+            StillExpecting = remove_recived(Messages, Expected),
+            ct:log("Removed ~p Expecting ~p", [Messages, StillExpecting]),
+            wait_for_replies(Socket, StillExpecting, Deadline);
+        {error, timeout} ->
+            ct:fail("Did not receive expected messages within the timeout. Missing: ~p", [Expected]);
+        {error, Reason} ->
+            ct:fail("Socket error while waiting for replies: ~p. Missing: ~p", [Reason, Expected])
+    end.
 
 remove_recived([], Expected) ->
     Expected;

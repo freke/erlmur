@@ -50,8 +50,10 @@ init(Nodes) ->
 
 get(UserId) ->
     F = fun() -> mnesia:read(user, UserId) end,
-    [U] = mnesia:activity(transaction, F),
-    U.
+    case mnesia:activity(transaction, F) of
+        [U] -> {ok, U};
+        [] -> {error, not_found}
+    end.
 
 active_users() ->
     F = fun() -> mnesia:foldl(fun(User, Acc) -> [User | Acc] end, [], user) end,
@@ -83,39 +85,62 @@ add(Name) ->
     logger:info("User added: ~p", [[{id, UserId}, {name, Name}]]),
     User.
 
-update([], User, Actor) ->
-    F = fun() -> mnesia:write(user, User, write) end,
-    mnesia:activity(transaction, F);
-update([{_, undefined} | R], User, Actor) ->
-    update(R, User, Actor);
-update([{channel_id, NewChannel} | R], User, Actor) ->
-    update(R, User#user{channel_id = NewChannel}, Actor);
-update([{name, NewName} | R], User, Actor) ->
-    update(R, User#user{name = NewName}, Actor);
-update([{comment, Comment} | R], User, Actor) ->
-    update(R, User#user{comment = Comment}, Actor);
-update([V | R], User, Actor) ->
-    logger:warning("Unknown update field: ~p", [V]),
-    update(R, User, Actor).
+update(UserId, Updates, _Actor) ->
+    F = fun() ->
+        case mnesia:read(user, UserId) of
+            [OldUser] ->
+                NewUser = apply_user_updates(OldUser, Updates),
+                ok = mnesia:write(NewUser),
+                {ok, NewUser};
+            [] ->
+                {error, user_not_found}
+        end
+    end,
+    mnesia:activity(transaction, F).
 
 list() ->
     F = fun() -> mnesia:foldl(fun(User, Acc) -> [User | Acc] end, [], user) end,
     mnesia:activity(transaction, F).
 
-move_to_channel([], _, _) ->
-    ok;
-move_to_channel([UserId | Users], ChannelId, Actor) ->
-    move_to_channel(UserId, ChannelId, Actor),
-    move_to_channel(Users, ChannelId, Actor);
-move_to_channel(UserId, ChannelId, Actor) ->
-    logger:info("Moving user ~p to channel ~p", [UserId, ChannelId]),
+move_to_channel(UserIds, ChannelId, _Actor) when is_list(UserIds) ->
+    logger:info("Moving users ~p to channel ~p", [UserIds, ChannelId]),
     F = fun() ->
-        [U] = mnesia:read(user, UserId),
-        NewU = U#user{channel_id = ChannelId},
-        mnesia:write(NewU)
+        lists:foreach(
+            fun(UserId) ->
+                do_move_user(UserId, ChannelId)
+            end,
+            UserIds
+        )
     end,
-    mnesia:activity(transaction, F).
+    mnesia:activity(transaction, F);
+move_to_channel(UserId, ChannelId, Actor) when is_integer(UserId) ->
+    move_to_channel([UserId], ChannelId, Actor).
 
 %%--------------------------------------------------------------------
 %% Internal
 %%--------------------------------------------------------------------
+
+do_move_user(UserId, NewChannelId) ->
+    case mnesia:read(user, UserId) of
+        [OldUser] ->
+            NewUser = OldUser#user{channel_id = NewChannelId},
+            mnesia:write(NewUser);
+        [] ->
+            ok
+    end.
+
+apply_user_updates(User, []) ->
+    User;
+apply_user_updates(User, [{_, undefined} | Rest]) ->
+    apply_user_updates(User, Rest);
+apply_user_updates(User, [{channel_id, V} | Rest]) ->
+    apply_user_updates(User#user{channel_id = V}, Rest);
+apply_user_updates(User, [{name, V} | Rest]) ->
+    apply_user_updates(User#user{name = V}, Rest);
+apply_user_updates(User, [{comment, V} | Rest]) ->
+    apply_user_updates(User#user{comment = V}, Rest);
+apply_user_updates(User, [{texture, V} | Rest]) ->
+    apply_user_updates(User#user{texture = V}, Rest);
+apply_user_updates(User, [Unknown | Rest]) ->
+    logger:warning("Unknown update field: ~p", [Unknown]),
+    apply_user_updates(User, Rest).

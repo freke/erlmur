@@ -22,6 +22,7 @@ connection, from the initial handshake to termination.
     user/4, user/1,
     get_state/1,
     update_stats/2,
+    update_user_state/2,
     move_to_channel/2,
     voice_data/2
 ]).
@@ -61,6 +62,9 @@ get_state(Pid) ->
 
 update_stats(Pid, Stats) ->
     gen_statem:cast(Pid, {update_stats, Stats}).
+
+update_user_state(Pid, UserState) ->
+    gen_statem:cast(Pid, {update_user_state, UserState}).
 
 move_to_channel(Pid, NewChannelId) ->
     gen_statem:cast(Pid, {move_to_channel, NewChannelId}).
@@ -143,8 +147,8 @@ established(enter, _OldState, StateData) ->
     User = StateData#state.session#session.user,
     logger:debug("Established user ~p ~p", [User#user.id, User#user.name]),
     {keep_state_and_data, ?TIMEOUT};
-established(cast, {new_user_connected, NewUserSession}, #state{session = Session}) ->
-    erlmur_tcp_message:send(Session#session.session_pid, {users, [NewUserSession]}),
+established(cast, {user_changed, UserSession}, #state{session = Session}) ->
+    erlmur_tcp_message:send(Session#session.session_pid, {users, [UserSession]}),
     {keep_state_and_data, ?TIMEOUT};
 established(cast, {get_state_async, ReplyTo, Ref}, #state{session = Session}) ->
     gen_statem:cast(ReplyTo, {state_reply, Ref, Session}),
@@ -165,6 +169,20 @@ established(cast, {client_version, ClientVersion}, StateData = #state{session = 
         ?TIMEOUT};
 established(cast, {update_stats, Stats}, StateData = #state{session = Session}) ->
     {keep_state, StateData#state{session = Session#session{stats = Stats}}, ?TIMEOUT};
+established(cast, {update_user_state, UpdateMap}, StateData = #state{session = Session}) ->
+    NewSession = apply_user_state_updates(Session, UpdateMap),
+    case Session =/= NewSession of
+        true ->
+            broadcast_update(NewSession),
+            % Persist the changes that belong to the user store
+            UserUpdates = maps:with([comment, texture], UpdateMap),
+            UserId = NewSession#session.user#user.id,
+            UpdateProplist = maps:to_list(UserUpdates),
+            erlmur_user_store:update(UserId, UpdateProplist, UserId);
+        false ->
+            ok
+    end,
+    {keep_state, StateData#state{session = NewSession}, ?TIMEOUT};
 established(cast, {move_to_channel, NewChannelId}, StateData = #state{session = Session}) ->
     OldChannelId = Session#session.user#user.channel_id,
     if
@@ -332,6 +350,28 @@ handle_udp_data(IP, PortNo, EncryptedMsg, BroadCast, StateData = #state{session 
         end,
     {keep_state, StateData#state{session = NewSession}, ?TIMEOUT}.
 
+apply_user_state_updates(Session, UpdateMap) ->
+    S1 = Session#session{
+        self_mute = maps:get(self_mute, UpdateMap, Session#session.self_mute),
+        self_deaf = maps:get(self_deaf, UpdateMap, Session#session.self_deaf),
+        recording = maps:get(recording, UpdateMap, Session#session.recording)
+    },
+    OldUser = S1#session.user,
+    NewUser = OldUser#user{
+        comment = maps:get(comment, UpdateMap, OldUser#user.comment),
+        texture = maps:get(texture, UpdateMap, OldUser#user.texture)
+    },
+    S1#session{user = NewUser}.
+
+broadcast_update(Session) ->
+    AllPids = pg:get_members(pg_erlmur, users),
+    lists:foreach(
+        fun(Pid) ->
+            gen_statem:cast(Pid, {user_changed, Session})
+        end,
+        AllPids
+    ).
+
 finish_sync(NewSession, UserSessions) ->
     erlmur_tcp_message:send(NewSession#session.session_pid, {users, [NewSession | UserSessions]}),
     erlmur_tcp_message:send(NewSession#session.session_pid, {server_sync, NewSession#session.id}).
@@ -365,7 +405,7 @@ handle_new_user(User, Tokens, Type, StateData = #state{session = Session}) ->
             % Other users exist, sync with them
             lists:foreach(
                 fun(Pid) ->
-                    gen_statem:cast(Pid, {new_user_connected, NewSession})
+                    gen_statem:cast(Pid, {user_changed, NewSession})
                 end,
                 AllPids
             ),
