@@ -50,8 +50,10 @@ init(Nodes) ->
 
 get(UserId) ->
     F = fun() -> mnesia:read(user, UserId) end,
-    [U] = mnesia:activity(transaction, F),
-    U.
+    case mnesia:activity(transaction, F) of
+        [U] -> {ok, U};
+        [] -> {error, not_found}
+    end.
 
 active_users() ->
     F = fun() -> mnesia:foldl(fun(User, Acc) -> [User | Acc] end, [], user) end,
@@ -85,9 +87,14 @@ add(Name) ->
 
 update(UserId, Updates, _Actor) ->
     F = fun() ->
-        [OldUser] = mnesia:read(user, UserId),
-        NewUser = apply_user_updates(OldUser, Updates),
-        mnesia:write(NewUser)
+        case mnesia:read(user, UserId) of
+            [OldUser] ->
+                NewUser = apply_user_updates(OldUser, Updates),
+                ok = mnesia:write(NewUser),
+                {ok, NewUser};
+            [] ->
+                {error, user_not_found}
+        end
     end,
     mnesia:activity(transaction, F).
 
@@ -95,23 +102,32 @@ list() ->
     F = fun() -> mnesia:foldl(fun(User, Acc) -> [User | Acc] end, [], user) end,
     mnesia:activity(transaction, F).
 
-move_to_channel([], _, _) ->
-    ok;
-move_to_channel([UserId | Users], ChannelId, Actor) ->
-    move_to_channel(UserId, ChannelId, Actor),
-    move_to_channel(Users, ChannelId, Actor);
-move_to_channel(UserId, ChannelId, Actor) ->
-    logger:info("Moving user ~p to channel ~p", [UserId, ChannelId]),
+move_to_channel(UserIds, ChannelId, _Actor) when is_list(UserIds) ->
+    logger:info("Moving users ~p to channel ~p", [UserIds, ChannelId]),
     F = fun() ->
-        [U] = mnesia:read(user, UserId),
-        NewU = U#user{channel_id = ChannelId},
-        mnesia:write(NewU)
+        lists:foreach(
+            fun(UserId) ->
+                do_move_user(UserId, ChannelId)
+            end,
+            UserIds
+        )
     end,
-    mnesia:activity(transaction, F).
+    mnesia:activity(transaction, F);
+move_to_channel(UserId, ChannelId, Actor) when is_integer(UserId) ->
+    move_to_channel([UserId], ChannelId, Actor).
 
 %%--------------------------------------------------------------------
 %% Internal
 %%--------------------------------------------------------------------
+
+do_move_user(UserId, NewChannelId) ->
+    case mnesia:read(user, UserId) of
+        [OldUser] ->
+            NewUser = OldUser#user{channel_id = NewChannelId},
+            mnesia:write(NewUser);
+        [] ->
+            ok
+    end.
 
 apply_user_updates(User, []) ->
     User;
