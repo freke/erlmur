@@ -10,7 +10,7 @@
 %%--------------------------------------------------------------------
 
 suite() ->
-    logger:set_primary_config(level, debug),
+    logger:set_primary_config(level, info),
     [{timetrap, {seconds, 10}}].
 
 init_per_suite(Config) ->
@@ -212,7 +212,8 @@ send_remove_channel({Socket}, ChannelId) ->
     get_replies(Socket, ['ChannelRemove']).
 
 get_replies(Socket, Expected) ->
-    Deadline = erlang:system_time(millisecond) + 2000, % 2 second timeout
+    % 2 second timeout
+    Deadline = erlang:system_time(millisecond) + 2000,
     wait_for_replies(Socket, Expected, Deadline).
 
 wait_for_replies(_Socket, [], _Deadline) ->
