@@ -1,6 +1,6 @@
 -module(erlmur_tcp_message_tests).
 
--include_lib("eunit.hrl").
+-include_lib("eunit/include/eunit.hrl").
 -include("Mumble_gpb.hrl").
 -include("erlmur.hrl").
 
@@ -92,7 +92,7 @@ setup_send_version() ->
     maybe_meck_expect(erlmur_protocol_version, encode, fun(#version{}) -> {<<1,0,0,0>>, <<>>} end),
     Self = self(),
     maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) ->
-        Self \! {sent, Bin}, ok
+        Self ! {sent, Bin}, ok
     end),
     ok.
 
@@ -125,7 +125,7 @@ setup_send_crypto() ->
     maybe_meck_expect(erlmur_crypto, encrypt_iv, fun(_State) -> <<2:128>> end),
     maybe_meck_expect(erlmur_crypto, decrypt_iv, fun(_State) -> <<3:128>> end),
     Self = self(),
-    maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) -> Self \! {sent, Bin}, ok end),
+    maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) -> Self ! {sent, Bin}, ok end),
     ok.
 
 teardown_send_crypto(_) ->
@@ -152,7 +152,7 @@ send_crypto_setup_sends_cryptsetup_test_() ->
 setup_send_channels() ->
     maybe_meck_new(erlmur_session, [unstick, passthrough]),
     Self = self(),
-    maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) -> Self \! {sent, Bin}, ok end),
+    maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) -> Self ! {sent, Bin}, ok end),
     ok.
 
 teardown_send_channels(_) ->
@@ -199,7 +199,7 @@ gather_msgs(Acc, N) when N > 0 ->
 setup_send_users() ->
     maybe_meck_new(erlmur_session, [unstick, passthrough]),
     Self = self(),
-    maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) -> Self \! {sent, Bin}, ok end),
+    maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) -> Self ! {sent, Bin}, ok end),
     ok.
 
 teardown_send_users(_) ->
@@ -234,7 +234,7 @@ setup_send_server_sync() ->
     maybe_meck_expect(erlmur_server, config, fun() ->
         #server_config{max_bandwidth = 48000, welcome_text = <<"hi">>}
     end),
-    maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) -> Self \! {sent, Bin}, ok end),
+    maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) -> Self ! {sent, Bin}, ok end),
     ok.
 
 teardown_send_server_sync(_) ->
@@ -261,7 +261,7 @@ send_server_sync_includes_bandwidth_and_session_test_() ->
 setup_send_codec_version() ->
     maybe_meck_new(erlmur_session, [unstick, passthrough]),
     Self = self(),
-    maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) -> Self \! {sent, Bin}, ok end),
+    maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) -> Self ! {sent, Bin}, ok end),
     ok.
 
 teardown_send_codec_version(_) ->
@@ -296,7 +296,7 @@ setup_handle_version_v1() ->
     Self = self(),
     maybe_meck_expect(erlmur_session, client_version,
         fun(_Pid, #version{release = <<"rel">>, os = <<"linux">>, os_version = <<"6.9">>}) ->
-            Self \! version_v1_called, ok
+            Self ! version_v1_called, ok
         end),
     ok.
 
@@ -331,7 +331,7 @@ setup_handle_authenticate() ->
     Self = self(),
     maybe_meck_expect(erlmur_session, user,
         fun(_Pid, #user{id = 7}, [<<"tok">>], regular) ->
-            Self \! {authed, regular}, ok
+            Self ! {authed, regular}, ok
         end),
     ok.
 
@@ -363,7 +363,7 @@ setup_handle_userstate_self_update() ->
     maybe_meck_new(erlmur_session, [unstick, passthrough]),
     Self = self(),
     maybe_meck_expect(erlmur_session, update_user_state, fun(_Pid, Map) ->
-        Self \! {updated, Map}, ok end),
+        Self ! {updated, Map}, ok end),
     ok.
 
 teardown_handle_userstate_self_update(_) ->
@@ -398,7 +398,7 @@ setup_handle_permission_query() ->
         {ChannelId, 16#A5A5 + UserId}  %% just to ensure id is used
     end),
     maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) ->
-        Self \! {sent, Bin}, ok end),
+        Self ! {sent, Bin}, ok end),
     ok.
 
 teardown_handle_permission_query(_) ->
@@ -434,7 +434,7 @@ setup_handle_ping() ->
     maybe_meck_expect(erlmur_stats, times, fun({_A,_B,_C,_D}, _S1) -> S0 end),
     maybe_meck_expect(erlmur_stats, client_stats, fun({_G,_L,_Lo,_R}, _S2) -> S0 end),
     maybe_meck_expect(erlmur_session, update_stats, fun(_Pid, _New) -> ok end),
-    maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) -> Self \! {sent, Bin}, ok end),
+    maybe_meck_expect(erlmur_session, send, fun(_Pid, Bin) -> Self ! {sent, Bin}, ok end),
     ok.
 
 teardown_handle_ping(_) ->
@@ -479,7 +479,7 @@ setup_channel_create_broadcast() ->
     end),
     maybe_meck_expect(erlmur_session, send, fun(_Pid, _Bin) ->
         %% We don't decode content here; just acknowledge
-        Self \! {broadcasted, channel_state}, ok end),
+        Self ! {broadcasted, channel_state}, ok end),
     ok.
 
 teardown_channel_create_broadcast(_) ->
@@ -515,7 +515,7 @@ setup_channel_remove_broadcast() ->
         ok
     end),
     maybe_meck_expect(erlmur_session, send, fun(_Pid, _Bin) ->
-        Self \! removed_broadcast, ok end),
+        Self ! removed_broadcast, ok end),
     ok.
 
 teardown_channel_remove_broadcast(_) ->
