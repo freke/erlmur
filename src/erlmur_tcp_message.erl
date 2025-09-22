@@ -225,8 +225,8 @@ handle_message(Session, #'Authenticate'{
     logger:info("Authenticate user ~p", [Username]),
     T =
         case Type of
-            0 -> regular;
-            1 -> bot
+            1 -> bot;
+            _ -> regular
         end,
     case erlmur_authenticate:check(Username, Password) of
         {ok, User} ->
