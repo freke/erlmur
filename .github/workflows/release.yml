@@ -1,9 +1,7 @@
-name: Erlmur release
+name: Erlmur docker image
 
 on:
   push:
-    tags:
-      - 'v*'
 
 permissions:
   contents: read
@@ -14,15 +12,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Sanitize ref_name for Docker tag
+        run: |
+          echo "SANITIZED_REF=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_ENV"
       - name: Beam Docker Release
-        uses: shortishly/beam-docker-release-action@v1
+        uses: freke/beam-docker-release-action@main
         with:
           registry: ghcr.io
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
+          build-image: erlang:latest
           build-command: rebar3 release
           build-platforms: linux/amd64
-          build-tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}:latest
+          build-tags: ghcr.io/${{ github.repository }}:${{ env.SANITIZED_REF }}
 
