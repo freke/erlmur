@@ -23,7 +23,6 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=ref,event=tag,value=latest
           sep-tags: ','
       - name: Beam Docker Release
         uses: freke/beam-docker-release-action@main
