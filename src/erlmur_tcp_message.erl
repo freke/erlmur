@@ -225,8 +225,13 @@ handle_message(Session, #'Authenticate'{
     logger:info("Authenticate user ~p", [Username]),
     T =
         case Type of
-            0 -> regular;
-            1 -> bot
+            0 ->
+                regular;
+            1 ->
+                bot;
+            _ ->
+                logger:warning("Unknown Authenticate.client_type ~p; defaulting to regular", [Type]),
+                regular
         end,
     case erlmur_authenticate:check(Username, Password) of
         {ok, User} ->

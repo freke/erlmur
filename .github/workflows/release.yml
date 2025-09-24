@@ -1,28 +1,37 @@
-name: Erlmur release
+name: Erlmur docker image
 
 on:
   push:
-    tags:
-      - 'v*'
 
 permissions:
   contents: read
   packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+          sep-tags: ','
       - name: Beam Docker Release
-        uses: shortishly/beam-docker-release-action@v1
+        uses: freke/beam-docker-release-action@main
         with:
           registry: ghcr.io
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
+          build-image: erlang:latest
           build-command: rebar3 release
           build-platforms: linux/amd64
-          build-tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}:latest
+          build-tags: ${{ steps.meta.outputs.tags }}
 
