@@ -16,6 +16,7 @@ Mnesia*
 log
 *_gpb*
 *.pem
+*.key
 *.coverdata
 doc
 *.log
@@ -32,3 +33,6 @@ devenv.local.nix
 
 GEMINI.md
 .gemini
+.agents
+.agent
+.vscode

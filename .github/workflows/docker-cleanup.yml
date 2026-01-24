@@ -1,0 +1,22 @@
+name: Docker images cleanup
+
+on:
+  schedule:
+  - cron: '0 0 * * 0'
+
+permissions:
+  packages: write
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Cleanup Images
+      uses: freke/github_docker_package_cleanup@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        package: "erlmur"
+        days: 14

@@ -1,0 +1,18 @@
+{application, erlmur, [
+    {description, "Mumble server implementation in Erlang"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        ssl,
+        ranch,
+        mumble_protocol
+    ]},
+    {mod, {erlmur_app, []}},
+    {env, [
+        {cert_pem, "priv/cert.pem"},
+        {key_pem, "priv/key.pem"},
+        {allow_selfsigned, true}
+    ]}
+]}.

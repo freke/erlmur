@@ -10,17 +10,11 @@ in
     pkgs.just
     pkgs.openssl
     pkgs.plantuml
-    pkgs.markdownlint-cli
-    pkgs.erlang-ls
     pkgs.erlfmt
   ];
 
   languages = {
     erlang.enable = true;
-    javascript = {
-      enable = true;
-      npm.enable = true;
-    };
   };
 
   scripts.build.exec = ''
