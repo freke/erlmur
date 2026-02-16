@@ -5,6 +5,7 @@
     session_id :: pos_integer(),
     pid :: pid(),
     username :: binary(),
+    channel_id = 0 :: non_neg_integer(),
     udp_addr :: {inet:ip_address(), inet:port_number()} | undefined
 }).
 

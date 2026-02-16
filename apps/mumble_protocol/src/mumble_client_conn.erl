@@ -27,7 +27,7 @@ ok = mumble_client_conn:stop(Pid).
 -include("Mumble_gpb.hrl").
 
 %% API
--export([start_link/2, start_link/3, send/2, send_voice/2, get_state/1, stop/1]).
+-export([start_link/2, start_link/3, send/2, send_voice/2, get_state/1, stop/1, join_channel/2]).
 %% gen_statem callbacks
 -export([callback_mode/0, init/1, terminate/3]).
 -export([connecting/3, authenticating/3, established/3]).
@@ -96,20 +96,16 @@ connecting(enter, _, _) ->
 connecting(internal, {connect, Host, Port, Opts}, State) ->
     CertFile = proplists:get_value(cert_file, Opts),
     KeyFile = proplists:get_value(key_file, Opts),
-    SslOptsList = case {CertFile, KeyFile} of
+    BaseSslOpts = [{active, once}, binary, {verify, verify_none}, {versions, ['tlsv1.2', 'tlsv1.3']}],
+    case {CertFile, KeyFile} of
         {undefined, undefined} ->
-            [{active, once}, binary, {verify, verify_none}, {versions, ['tlsv1.2', 'tlsv1.3']}];
+            do_connect(Host, Port, BaseSslOpts, State);
+        {CF, KF} when CF =/= undefined, KF =/= undefined ->
+            SslOptsList = BaseSslOpts ++ [{certfile, CF}, {keyfile, KF}],
+            do_connect(Host, Port, SslOptsList, State);
         _ ->
-            [{active, once}, binary, {verify, verify_none}, {versions, ['tlsv1.2', 'tlsv1.3']},
-             {certfile, CertFile}, {keyfile, KeyFile}]
-    end,
-    case ssl:connect(Host, Port, SslOptsList) of
-        {ok, Socket} ->
-            {next_state, authenticating, State#state{socket = Socket}};
-        {error, Reason} ->
-            logger:error("Client failed to connect to ~p:~p reason: ~p", [Host, Port, Reason]),
-            %% Stop gracefully with connection error
-            {stop, {connection_failed, Reason}}
+            logger:error("Both cert_file and key_file must be provided together"),
+            {stop, {invalid_opts, missing_cert_or_key}}
     end;
 connecting(Type, Msg, State) ->
     handle_common(connecting, Type, Msg, State).
@@ -130,11 +126,17 @@ authenticating(enter, _, State) ->
     Username = proplists:get_value(username, State#state.opts, <<>>),
     Password = proplists:get_value(password, State#state.opts, <<>>),
     Token = proplists:get_value(token, State#state.opts, <<>>),
+    %% tokens is a repeated field, so it must be a list
+    TokensList = case Token of
+        <<>> -> [];
+        Bin when is_binary(Bin) -> [Bin];
+        List when is_list(List) -> List
+    end,
     AuthMsg = #{
         message_type => 'Authenticate',
         username => Username,
         password => Password,
-        token => Token
+        tokens => TokensList
     },
     ssl:send(State#state.socket, mumble_tcp_proto:pack(AuthMsg)),
     ssl:setopts(State#state.socket, [{active, once}]),
@@ -214,10 +216,20 @@ handle_common(_StateName, {call, From}, get_state, State) ->
         socket => State#state.socket,
         transport => State#state.transport,
         session_id => State#state.session_id,
-        connected => State#state.socket =/= undefined,
-        opts => State#state.opts
+        connected => State#state.socket =/= undefined
     },
     {keep_state, State, [{reply, From, SimpleState}]};
+handle_common(established, {call, From}, {join_channel, ChannelId}, State) ->
+    SessionId = State#state.session_id,
+    UserStateMsg = #{
+        message_type => 'UserState',
+        session => SessionId,
+        channel_id => ChannelId
+    },
+    ok = ssl:send(State#state.socket, mumble_tcp_proto:pack(UserStateMsg)),
+    {keep_state, State, [{reply, From, ok}]};
+handle_common(_StateName, {call, From}, {join_channel, _ChannelId}, _State) ->
+    {keep_state, _State, [{reply, From, {error, not_connected}}]};
 handle_common(_StateName, info, {ssl_closed, _}, _State) ->
     {stop, normal};
 handle_common(_StateName, enter, _OldState, _State = #state{socket = undefined}) ->
@@ -229,6 +241,16 @@ handle_common(_StateName, enter, _OldState, State) ->
 handle_common(StateName, Type, Msg, _State) ->
     logger:warning("Client ~p unhandled ~p ~p", [StateName, Type, Msg]),
     keep_state_and_data.
+
+do_connect(Host, Port, SslOptsList, State) ->
+    case ssl:connect(Host, Port, SslOptsList) of
+        {ok, Socket} ->
+            {next_state, authenticating, State#state{socket = Socket}};
+        {error, Reason} ->
+            logger:error("Client failed to connect to ~p:~p reason: ~p", [Host, Port, Reason]),
+            %% Stop gracefully with connection error
+            {stop, {connection_failed, Reason}}
+    end.
 
 do_send_voice(State = #state{udp_verified = true}, Msg) ->
     Payload = pack_voice(Msg),
@@ -254,6 +276,15 @@ pack_voice({voice_data, Type, Target, Counter, Voice, Positional}) ->
         _ -> <<Voice/binary, Positional/binary>>
     end,
     <<Header/binary, CounterBin/binary, Payload/binary>>.
+
+-doc """
+Join a channel on the Mumble server.
+Input: Client PID and ChannelId.
+Output: ok if sent, {error, Reason} otherwise.
+""".
+-spec join_channel(pid(), non_neg_integer()) -> ok | {error, term()}.
+join_channel(Pid, ChannelId) ->
+    gen_statem:call(Pid, {join_channel, ChannelId}).
 
 -doc """
 Stop the client connection and clean up resources.

@@ -45,6 +45,7 @@ The connection progresses through these states:
     handler_mod,
     handler_state,
     session_id,
+    channel_id = 0,
     crypto_state,
     stats = #stats{},
     mumble_protocol = v1_2,
@@ -219,7 +220,15 @@ established(
 established(
     cast, {voice_data, Msg}, StateData
 ) ->
-    send_voice(StateData, Msg),
+    {voice_data, _Type, SenderSession, _Target, _Counter, _Voice, _Positional} = Msg,
+    case SenderSession == StateData#state.session_id of
+        true ->
+            %% This is our own voice, check Target and broadcast if needed
+            send_voice(StateData, Msg);
+        false ->
+            %% This is a broadcast from another user, just send to our client
+            do_send_voice_to_client(StateData, Msg)
+    end,
     {keep_state_and_data, ?TIMEOUT};
 established(
     cast, {udp_stats, {Bytes, CryptoStats}}, StateData = #state{stats = Stats, udp_timer = OldTimer}
@@ -462,10 +471,41 @@ send_msg(#state{socket = Socket, transport = Transport}, Map) ->
             end
     end.
 
-send_voice(#state{udp_verified = true}, Msg) ->
+send_voice(StateData, Msg) ->
+    {voice_data, _Type, SenderSession, Target, _Counter, _Voice, _Positional} = Msg,
+    case Target of
+        31 ->
+            %% Server loopback - echo back to sender
+            do_send_voice_to_client(StateData, Msg);
+        0 ->
+            %% Normal talking - broadcast to all users in sender's channel
+            ChannelId = StateData#state.channel_id,
+            case erlmur_user_manager_available() of
+                true ->
+                    erlmur_user_manager:broadcast_voice(SenderSession, ChannelId, Msg);
+                false ->
+                    %% Fallback for testing without erlmur_user_manager
+                    logger:debug("erlmur_user_manager not available, echoing voice back to sender"),
+                    do_send_voice_to_client(StateData, Msg)
+            end;
+        _ ->
+            %% Whisper targets (1-30) - not implemented yet
+            logger:debug("Whisper target ~p not implemented", [Target]),
+            ok
+    end.
+
+%% Check if erlmur_user_manager is available (running)
+erlmur_user_manager_available() ->
+    case whereis(erlmur_user_manager) of
+        undefined -> false;
+        _Pid -> true
+    end.
+
+%% Internal function to send voice to the connected client
+do_send_voice_to_client(#state{udp_verified = true}, Msg) ->
     Payload = pack_voice(Msg),
     send_udp(self(), Payload);
-send_voice(StateData = #state{udp_verified = false}, Msg) ->
+do_send_voice_to_client(StateData = #state{udp_verified = false}, Msg) ->
     Payload = pack_voice(Msg),
     send_msg(StateData, #{message_type => 'UDPTunnel', packet => Payload}).
 

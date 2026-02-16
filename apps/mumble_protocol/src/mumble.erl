@@ -39,7 +39,7 @@ Connect to a Mumble server:
 
 %% Public API exports
 -export([start_server/1, start_server/2, start_server/3, start_server/4, stop_listener/1]).
--export([start_client/4, start_client/5, stop_client/1, send/2, send_voice/2, get_state/1]).
+-export([start_client/4, start_client/5, stop_client/1, send/2, send_voice/2, get_state/1, join_channel/2]).
 -export([server_version/0, serverconfig/0]).
 
 -include("mumble_protocol.hrl").
@@ -286,6 +286,22 @@ Output: {ok, term()} containing client state on success, {error, term()} on fail
 -spec get_state(client_ref()) -> {ok, term()} | {error, term()}.
 get_state(ClientRef) ->
     mumble_client:get_state(ClientRef).
+
+-doc """
+Join a channel on the Mumble server.
+
+Input:
+  - ClientRef: Client reference obtained from start_client/5
+  - ChannelId: Integer channel ID to join
+
+Output: ok on success, {error, term()} on failure.
+
+The client sends a UserState message to the server requesting to join
+the specified channel. The server will confirm with a UserState message.
+""".
+-spec join_channel(client_ref(), non_neg_integer()) -> ok | {error, term()}.
+join_channel(ClientRef, ChannelId) ->
+    mumble_client:join_channel(ClientRef, ChannelId).
 
 -doc """
 Stop a Mumble client connection and clean up resources.
