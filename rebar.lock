@@ -1,4 +1,9 @@
-[{<<"ranch">>,
+[{<<"eqwalizer_support">>,
+  {git_subdir,"https://github.com/whatsapp/eqwalizer.git",
+              {ref,"0f514eb3893fa7070835c83ecb49fbea31b0426d"},
+              "eqwalizer_support"},
+  0},
+ {<<"ranch">>,
   {git,"https://github.com/ninenines/ranch.git",
-       {ref,"d272ca07524a61000324b2b7f7ad1ce9b2dd1487"}},
+       {ref,"0214cea20964a1657c94df8d0dd7158be99b0b28"}},
   0}].

@@ -1,0 +1,18 @@
+{application, mumble_protocol, [
+    {description, "Mumble protocol implementation for Erlmur"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        crypto,
+        public_key,
+        ssl,
+        ranch,
+        ocb128_crypto
+    ]},
+    {env, []},
+    {modules, []},
+    {licenses, ["Apache-2.0"]},
+    {links, []}
+]}.

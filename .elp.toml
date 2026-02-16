@@ -1,0 +1,4 @@
+type = "rebar3"
+
+[otp]
+exclude_apps = ["megaco"]
