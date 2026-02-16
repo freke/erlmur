@@ -8,6 +8,8 @@ broadcasting messages and managing session lifecycle.
 
 -behaviour(gen_server).
 
+-include("erlmur.hrl").
+
 %% API
 -export([start_link/0]).
 -export([register_user/2, unregister_user/1, get_user/1, get_all_users/0]).
@@ -16,13 +18,6 @@ broadcasting messages and managing session lifecycle.
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
-
--record(user, {
-    session_id :: pos_integer(),
-    pid :: pid(),
-    username :: binary(),
-    udp_addr :: {inet:ip_address(), inet:port_number()} | undefined
-}).
 
 -record(state, {
     users :: ets:tid(),

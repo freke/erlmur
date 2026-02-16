@@ -1,9 +1,11 @@
 build: format
 	rebar3 compile
 
+debug := "info"
+
 shell:
 	make key
-	rebar3 shell
+	ERLMUR_LOG_LEVEL={{debug}} rebar3 shell
 
 test: xref dialyzer proper eunit ct
 	rebar3 cover

@@ -32,7 +32,7 @@ ok = mumble_client_conn:stop(Pid).
 -export([callback_mode/0, init/1, terminate/3]).
 -export([connecting/3, authenticating/3, established/3]).
 
--record(state, {socket, transport = ssl, session_id, parent, stats = #stats{}, udp_verified = false, udp_timer}).
+-record(state, {socket, transport = ssl, session_id, parent, stats = #stats{}, udp_verified = false, udp_timer, opts = #{}}).
 
 -doc """
 Start a Mumble client connection with default options.
@@ -48,8 +48,10 @@ Start a Mumble client connection with custom options.
 Input: Host string, port number, and options map.
 Output: {ok, pid()} on success, {error, term()} on failure.
 """.
--spec start_link(string(), inet:port_number(), map()) -> {ok, pid()} | {error, term()}.
-start_link(Host, Port, Opts) ->
+-spec start_link(string(), inet:port_number(), map() | list()) -> {ok, pid()} | {error, term()}.
+start_link(Host, Port, Opts) when is_map(Opts) ->
+    start_link(Host, Port, maps:to_list(Opts));
+start_link(Host, Port, Opts) when is_list(Opts) ->
     Parent = self(),
     case gen_statem:start(?MODULE, {Host, Port, Opts, Parent}, []) of
         {ok, Pid} -> {ok, Pid};
@@ -87,18 +89,19 @@ callback_mode() ->
     [state_functions, state_enter].
 
 init({Host, Port, Opts, Parent}) ->
-    {ok, connecting, #state{parent = Parent}, {next_event, internal, {connect, Host, Port, Opts}}}.
+    {ok, connecting, #state{parent = Parent, opts = Opts}, {next_event, internal, {connect, Host, Port, Opts}}}.
 
 connecting(enter, _, _) ->
     keep_state_and_data;
 connecting(internal, {connect, Host, Port, Opts}, State) ->
-    %% Convert map options to proplist for ssl:connect
-    SslOptsList = case Opts of
-        #{cert_file := CertFile, key_file := KeyFile} ->
-            [{active, once}, binary, {verify, verify_none}, {versions, ['tlsv1.2', 'tlsv1.3']},
-             {certfile, CertFile}, {keyfile, KeyFile}];
+    CertFile = proplists:get_value(cert_file, Opts),
+    KeyFile = proplists:get_value(key_file, Opts),
+    SslOptsList = case {CertFile, KeyFile} of
+        {undefined, undefined} ->
+            [{active, once}, binary, {verify, verify_none}, {versions, ['tlsv1.2', 'tlsv1.3']}];
         _ ->
-            [{active, once}, binary, {verify, verify_none}, {versions, ['tlsv1.2', 'tlsv1.3']}]
+            [{active, once}, binary, {verify, verify_none}, {versions, ['tlsv1.2', 'tlsv1.3']},
+             {certfile, CertFile}, {keyfile, KeyFile}]
     end,
     case ssl:connect(Host, Port, SslOptsList) of
         {ok, Socket} ->
@@ -123,8 +126,16 @@ authenticating(enter, _, State) ->
           version_v2 => V2,
           release => <<"erlmur-client">>},
     ssl:send(State#state.socket, mumble_tcp_proto:pack(VerMsg)),
-    %% Send Authenticate
-    AuthMsg = #{message_type => 'Authenticate', username => <<"TestUser">>},
+    %% Send Authenticate with credentials from opts
+    Username = proplists:get_value(username, State#state.opts, <<>>),
+    Password = proplists:get_value(password, State#state.opts, <<>>),
+    Token = proplists:get_value(token, State#state.opts, <<>>),
+    AuthMsg = #{
+        message_type => 'Authenticate',
+        username => Username,
+        password => Password,
+        token => Token
+    },
     ssl:send(State#state.socket, mumble_tcp_proto:pack(AuthMsg)),
     ssl:setopts(State#state.socket, [{active, once}]),
     keep_state_and_data;
@@ -203,7 +214,8 @@ handle_common(_StateName, {call, From}, get_state, State) ->
         socket => State#state.socket,
         transport => State#state.transport,
         session_id => State#state.session_id,
-        connected => State#state.socket =/= undefined
+        connected => State#state.socket =/= undefined,
+        opts => State#state.opts
     },
     {keep_state, State, [{reply, From, SimpleState}]};
 handle_common(_StateName, info, {ssl_closed, _}, _State) ->

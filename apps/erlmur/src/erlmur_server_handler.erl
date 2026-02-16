@@ -35,6 +35,8 @@ authenticate(Msg, State) ->
 
 handle_msg(#{message_type := connection_status, status := established, session_id := SessionId}, State) ->
     logger:notice("Session ~p established", [SessionId]),
+    %% Ensure root channel exists for all connections
+    erlmur_channel_manager:ensure_root_channel(),
     {ok, State};
 
 handle_msg(#{message_type := connection_status, status := udp_verified, session_id := SessionId}, State) ->
@@ -54,8 +56,21 @@ handle_msg(#{message_type := 'UserState'}, State) ->
     %% Ignore user state updates for MVP
     {ok, State};
 
-handle_msg(#{message_type := 'ChannelState'}, State) ->
-    %% Ignore channel state updates for MVP
+handle_msg(#{message_type := 'ChannelState'} = Msg, State) ->
+    %% Delegate to channel manager for create or update
+    case maps:get(channel_id, Msg, undefined) of
+        undefined ->
+            %% New channel creation
+            erlmur_channel_manager:create_channel(Msg);
+        ChannelId ->
+            %% Existing channel update
+            erlmur_channel_manager:update_channel(ChannelId, Msg)
+    end,
+    {ok, State};
+
+handle_msg(#{message_type := 'ChannelRemove'} = Msg, State) ->
+    %% Delegate to channel manager for removal
+    erlmur_channel_manager:remove_channel(Msg),
     {ok, State};
 
 handle_msg(#{message_type := 'PermissionQuery'}, State) ->
