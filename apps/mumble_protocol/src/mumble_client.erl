@@ -9,7 +9,7 @@ sending messages, receiving messages, and managing client state.
 This is an internal module - use mumble.erl for the public API.
 """.
 
--export([start_client/5, stop_client/1, send/2, send_voice/2, get_state/1]).
+-export([start_client/5, stop_client/1, send/2, send_voice/2, get_state/1, join_channel/2]).
 
 -include("mumble_protocol.hrl").
 
@@ -127,6 +127,23 @@ Returns:
 get_state({mumble_client, Pid}) ->
 	{ok, mumble_client_conn:get_state(Pid)};
 get_state(_) ->
+    {error, invalid_client_ref}.
+
+-doc """
+Join a channel on the Mumble server.
+
+Input:
+  - ClientRef: Client reference from start_client/5
+  - ChannelId: Integer channel ID to join
+
+Returns:
+  - ok: Join request sent successfully
+  - {error, term()}: Failed to send join request
+""".
+-spec join_channel(mumble:client_ref(), non_neg_integer()) -> ok | {error, term()}.
+join_channel({mumble_client, Pid}, ChannelId) ->
+    mumble_client_conn:join_channel(Pid, ChannelId);
+join_channel(_, _) ->
     {error, invalid_client_ref}.
 
 %% Internal functions

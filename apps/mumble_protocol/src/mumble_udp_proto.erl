@@ -34,11 +34,12 @@ Output: Routes packet to appropriate handler (ping or voice data).
 handle(Session, <<1:3, Timestamp/bits>>) ->
     handle_ping(Session, Timestamp, false);
 handle(Session, <<Type:3, Target:5, Rest/binary>>) ->
-    logger:debug("DataMsg~nType ~p~nTarget ~p", [Type, Target]),
+    logger:debug("Voice packet~nType ~p~nTarget ~p", [Type, Target]),
     {Counter, R} = mumble_varint:decode(Rest),
     {Voice, Positional} = split_voice_positional(Type, R),
-    mumble_server_conn:voice_data(Session#session.session_pid,
-                              {voice_data, Type, Target, Counter, Voice, Positional}).
+    %% Include sender_session so server can properly route voice to other clients
+    VoiceData = {voice_data, Type, Session#session.id, Target, Counter, Voice, Positional},
+    mumble_server_conn:voice_data(Session#session.session_pid, VoiceData).
 
 %%%%%%
 %%% Private

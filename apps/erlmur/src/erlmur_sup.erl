@@ -21,6 +21,13 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
+    logger:info("[erlmur_sup] Starting channel manager..."),
+    ChannelManager = #{
+        id => erlmur_channel_manager,
+        start => {erlmur_channel_manager, start_link, []},
+        restart => permanent,
+        type => worker
+    },
     logger:info("[erlmur_sup] Starting user manager..."),
     UserManager = #{
         id => erlmur_user_manager,
@@ -28,5 +35,4 @@ init([]) ->
         restart => permanent,
         type => worker
     },
-    logger:info("[erlmur_sup] User manager started"),
-    {ok, {{one_for_one, 5, 10}, [UserManager]}}.
+    {ok, {{one_for_one, 5, 10}, [ChannelManager, UserManager]}}.

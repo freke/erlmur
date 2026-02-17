@@ -129,17 +129,17 @@ voice_fallback_test(Config) ->
     {ok, ClientPid} = mumble_client_conn:start_link({127, 0, 0, 1}, MockMumblePort, Opts),
     ok = wait_for_established(ClientPid, 5000),
 
-    %% Packet Type 0 (CELT Alpha), Target 0 (Normal Speech), Seq 0
+    %% Packet Type 0 (CELT Alpha), Target 31 (Server Loopback), Seq 0
     %% Payload must match format expected by splitting logic.
     %% <<0:1, Len:7, Data:Len/bytes>>
     %% Len=5, Data="VOICE". <<5, "VOICE">>
     VoicePayload = <<5, "VOICE">>,
-    VoicePacket = {voice_data, 0, 0, 0, VoicePayload, undefined},
+    VoicePacket = {voice_data, 0, 31, 0, VoicePayload, undefined},
     
     %% UDP is not verified yet, so Client should send via TCP Tunnel (Msg Type 1)
     mumble_client_conn:send_voice(ClientPid, VoicePacket),
 
-    %% Server receives via TCP, sees unverified UDP on its side, and echoes back via TCP
+    %% Server receives via TCP, sees Target=31 (loopback), echoes back via TCP
     ok = wait_for_udp_tunnel_voice(VoicePayload, 1000),
 
     gen_statem:stop(ClientPid),
@@ -172,11 +172,10 @@ udp_switch_test(Config) ->
 wait_for_udp_tunnel_voice(ExpectedData, Timeout) ->
     receive
         {mumble_msg, #{message_type := 'UDPTunnel', packet := Packet}} ->
-            %% Packet format: Type(3) | Target(5) | Varint(Seq) | Data
-            %% We sent Type 0, Target 0. 
-            %% <<0:3, 0:5, Rest/bits>>
+            %% Server packet format: Type(3) | Context(5) | SenderSession(varint) | Counter(varint) | Data
             <<0:3, 0:5, Rest/bits>> = Packet,
-            {_Seq, VoiceData} = mumble_varint:decode(Rest),
+            {_SenderSession, Rest2} = mumble_varint:decode(Rest),
+            {_Seq, VoiceData} = mumble_varint:decode(Rest2),
             case VoiceData of
                 ExpectedData -> ok;
                 _ -> 

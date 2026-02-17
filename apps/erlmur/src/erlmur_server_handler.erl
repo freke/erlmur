@@ -35,6 +35,8 @@ authenticate(Msg, State) ->
 
 handle_msg(#{message_type := connection_status, status := established, session_id := SessionId}, State) ->
     logger:notice("Session ~p established", [SessionId]),
+    %% Ensure root channel exists for all connections
+    erlmur_channel_manager:ensure_root_channel(),
     {ok, State};
 
 handle_msg(#{message_type := connection_status, status := udp_verified, session_id := SessionId}, State) ->
@@ -50,12 +52,34 @@ handle_msg(#{message_type := 'TextMessage', message := Message}, State = #state{
     erlmur_user_manager:broadcast_text(SessionId, Message),
     {ok, State};
 
-handle_msg(#{message_type := 'UserState'}, State) ->
-    %% Ignore user state updates for MVP
+handle_msg(#{message_type := 'UserState'} = Msg, State = #state{session_id = SessionId}) ->
+    %% Handle channel join requests
+    case maps:get(channel_id, Msg, undefined) of
+        undefined -> ok;
+        ChannelId ->
+            logger:info("User ~p joining channel ~p", [SessionId, ChannelId]),
+            erlmur_user_manager:update_user_channel(SessionId, ChannelId),
+            %% Broadcast user state to all clients so they update their UI
+            erlmur_user_manager:broadcast_user_state(SessionId)
+    end,
     {ok, State};
 
-handle_msg(#{message_type := 'ChannelState'}, State) ->
-    %% Ignore channel state updates for MVP
+handle_msg(#{message_type := 'ChannelState'} = Msg, State = #state{session_id = SessionId}) ->
+    %% Delegate to channel manager for create or update
+    case maps:get(channel_id, Msg, undefined) of
+        undefined ->
+            %% New channel creation - add actor (creator) to the message
+            MsgWithActor = Msg#{actor => SessionId},
+            erlmur_channel_manager:create_channel(MsgWithActor);
+        ChannelId ->
+            %% Existing channel update
+            erlmur_channel_manager:update_channel(ChannelId, Msg)
+    end,
+    {ok, State};
+
+handle_msg(#{message_type := 'ChannelRemove'} = Msg, State) ->
+    %% Delegate to channel manager for removal
+    erlmur_channel_manager:remove_channel(Msg),
     {ok, State};
 
 handle_msg(#{message_type := 'PermissionQuery'}, State) ->
