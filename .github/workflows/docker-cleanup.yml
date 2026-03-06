@@ -15,7 +15,7 @@ jobs:
 
     steps:
     - name: Cleanup Images
-      uses: freke/github_docker_package_cleanup@v1
+      uses: freke/github_docker_package_cleanup@v1.0.0-rc2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         package: "erlmur"
